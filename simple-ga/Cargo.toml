@@ -1,0 +1,11 @@
+[package]
+name = "simple-ga"
+version = "0.1.0"
+authors = ["Hugo <hugo.lepeytre@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = "0.7.3"
+image = "0.23.0"
