@@ -67,6 +67,7 @@ impl Genome {
             let (dist, curr_v, dir) = vec_dist_heap.extract_max();
             rd_edges[curr_v] = dir;
             for d in 1..=4 {
+                // TODO for this line : implement direction get_pixels, and distance methods in image_proc
                 // vec_dist_heap.try_update_smallest_edge(adj_v, d + dist_to_adj, get_opp_dir, curr_v);
             }
         }
