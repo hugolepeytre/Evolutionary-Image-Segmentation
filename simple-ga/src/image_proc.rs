@@ -6,8 +6,40 @@ pub fn open_image(filepath : &str) -> Option<Img> {
     return Some(Img::new(im))
 }
 
-pub fn output_segmentations(edges : Vec<i32>, original_image : Img, filepath : &str) {
-    // TODO
+pub fn output_segmentations(original_image : Img, segs : Vec<usize>, filepath_num : String) {
+    let mut imgbuf_type1 = image::ImageBuffer::new(original_image.width as u32, original_image.height as u32);
+    let mut imgbuf_type2 = image::ImageBuffer::new(original_image.width as u32, original_image.height as u32);
+    for (x, y, pixel) in imgbuf_type1.enumerate_pixels_mut() {
+        let r : u8;
+        let g : u8;
+        let b : u8;
+        let pos = x as usize + y as usize * original_image.width;
+        if original_image.is_on_border(pos, &segs) {
+            r = 0;
+            g = 255;
+            b = 0;
+        }
+        else {
+            let p = original_image.get(pos);
+            r = p.r;
+            g = p.g;
+            b = p.b;
+        }
+        *pixel = image::Rgb([r, g, b]);
+    }
+    imgbuf_type1.save(format!("result_img{}_type1.jpg", filepath_num).as_str()).unwrap();
+    for (x, y, pixel) in imgbuf_type2.enumerate_pixels_mut() {
+        let pos = x as usize + y as usize * original_image.width;
+        if original_image.is_on_border(pos, &segs) {
+            let zero = 0 as u8;
+            *pixel = image::Rgb([zero, zero,zero]);
+        }
+        else {
+            let max = 255 as u8;
+            *pixel = image::Rgb([max, max, max]);
+        }
+    }
+    imgbuf_type2.save(format!("result_img{}_type2.jpg", filepath_num).as_str()).unwrap();
 }
 
 pub struct Img {
@@ -57,13 +89,13 @@ impl Img {
     }
 
     fn is_in_bounds(&self, p : i32) -> bool {
-        return 0 <= p && p < self.length() as i32
+        return 0 <= p && p < self.signed_length
     }
 
     pub fn neighbor(&self, p : usize, dir : i32) -> Option<usize> {
         let tmp_p = p as i32;
         let tmp_next = match dir {
-            0 => tmp_p,
+            0 => return None,
             1 => tmp_p - self.signed_width,
             2 => tmp_p + 1,
             3 => tmp_p + self.signed_width,
@@ -72,7 +104,7 @@ impl Img {
             6 => tmp_p + self.signed_width + 1,
             7 => tmp_p + self.signed_width - 1,
             8 => tmp_p - self.signed_width - 1,
-            _ => {println!("Shouldn't happen"); tmp_p},
+            _ => {println!("Shouldn't happen"); return None},
         };
         let next = if self.is_in_bounds(tmp_next) {Some(tmp_next as usize)} else {None};
         return next
@@ -86,6 +118,16 @@ impl Img {
     pub fn get(&self, idx : usize) -> &Pix {
         return &self.pixels[idx];
     }
+
+    pub fn is_on_border(&self, p : usize, segs : &Vec<usize>) -> bool {
+        for d in 1..=8 {
+            match self.neighbor(p, d) {
+                None => return true,
+                Some(p2) => if segs[p]!=segs[p2] {return true},
+            }
+        }
+        return false
+    }
 }
 
 pub struct Pix {
@@ -95,7 +137,7 @@ pub struct Pix {
 }
 
 impl Pix {
-    fn new(r : u8, g : u8, b : u8) -> Pix {
+    pub fn new(r : u8, g : u8, b : u8) -> Pix {
         return Pix{r, g, b}
     }
 
@@ -105,5 +147,9 @@ impl Pix {
 
     fn abs(c1 : u8, c2 : u8) -> f64 {
         return if c1 > c2 {(c1-c2) as f64} else {(c2-c1) as f64};
+    }
+
+    pub fn add_to_centroid_sum(&self, acc : (u32, u32, u32)) -> (u32, u32, u32) {
+        return (acc.0 + self.r as u32, acc.1 + self.g as u32, acc.2 + self.b as u32)
     }
 }
