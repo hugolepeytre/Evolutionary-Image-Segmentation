@@ -67,8 +67,10 @@ impl Genome {
             let (dist, curr_v, dir) = vec_dist_heap.extract_max();
             rd_edges[curr_v] = dir;
             for d in 1..=4 {
-                // TODO for this line : implement direction get_pixels, and distance methods in image_proc
-                // vec_dist_heap.try_update_smallest_edge(adj_v, d + dist_to_adj, get_opp_dir, curr_v);
+                match img.dist_to_adj(curr_v, d) {
+                    Some((adj_v, dist_to_adj)) => vec_dist_heap.try_update_smallest_edge(adj_v, dist + dist_to_adj, Img::get_opp_dir(d)),
+                    None => (),
+                }
             }
         }
         return Genome::new(Self::get_fitness(img, &rd_edges), rd_edges)
@@ -98,6 +100,11 @@ impl Genome {
     }
 
     fn get_fitness(img : &Img, edges : &Vec<i32>) -> i32 {
+        // TODO
+        return 0
+    }
+
+    fn get_fitness_PRI(img : &Img, edges : &Vec<i32>) -> i32 {
         // TODO
         return 0
     }
