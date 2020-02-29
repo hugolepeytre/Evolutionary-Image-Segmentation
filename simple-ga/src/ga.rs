@@ -5,7 +5,12 @@ const GENERATIONS : usize = 100;
 const MUT_PROB : f64 = 0.1;
 const CROSS_PROB : f64 = 1.0;
 
+const OD_WEIGHT : f64 = 1.0;
+const CO_WEIGHT : f64 = 1.0;
+const EV_WEIGHT : f64 = 1.0;
+
 use crate::image_proc::Img;
+use crate::image_proc::Pix;
 use crate::b_heap::BinaryHeap;
 use std::collections::HashSet;
 use std::cmp::Ordering;
@@ -53,7 +58,7 @@ impl Genome {
     }
 
     fn random(img : &Img) -> Genome {
-        let mut rd_edges : Vec<i32> = (0..img.length()).map(|_| 0).collect();
+        let mut rd_edges : Vec<i32> = vec![0; img.length()]; 
         let mut rng = thread_rng();
         let mut vec_dist_heap = BinaryHeap::new();
         let start : usize = rng.gen_range(0, img.length()) as usize;
@@ -61,7 +66,7 @@ impl Genome {
             vec_dist_heap.insert(v as usize, MAX, 0);
         }
         vec_dist_heap.find_vertices();
-        vec_dist_heap.try_update_smallest_edge(start, 0, 0);
+        vec_dist_heap.try_update_smallest_edge(start, 0.0, 0);
 
         while !vec_dist_heap.is_empty() {
             let (dist, curr_v, dir) = vec_dist_heap.extract_max();
@@ -100,13 +105,44 @@ impl Genome {
     }
 
     fn get_fitness(img : &Img, edges : &Vec<i32>) -> i32 {
-        // TODO
-        return 0
+        let (seg_nums, centroids) = Self::find_segments(img, edges);
+        let (edge_val, connectivity, overall_dev) = Self::get_measures(img, &seg_nums, &centroids);
+        let fit = edge_val as f64 * EV_WEIGHT - connectivity as f64 * CO_WEIGHT - overall_dev as f64 * OD_WEIGHT;
+        return fit as i32
     }
 
-    fn get_fitness_PRI(img : &Img, edges : &Vec<i32>) -> i32 {
+    fn find_segments(img : &Img, nodes : &Vec<i32>) -> (Vec<usize>, Vec<Pix>) {
+        // Find segments : From each node, follow its path down, adding every step to a set
+        // If you ever encounter a node that's already in a set, merge the two sets and go to next node
+        // Else the created set is a new segment
+        // Then go over every set and give every element in it the same number, i.e. the segment's number
+        let mut seg_num = Vec::new();
+        let mut centroids = Vec::new();
         // TODO
-        return 0
+        return (seg_num, centroids)
+    }
+
+    fn get_measures(img : &Img, seg_nums : &Vec<usize>, centroids : &Vec<Pix>) -> (f64, f64, f64) {
+        let mut edge_val = 0.0;
+        let mut connectivity = 0.0;
+        let mut overall_dev = 0.0;
+        for p in 0..img.length() {
+            let p_pix = img.get(p);
+            let seg = seg_nums[p];
+            overall_dev = overall_dev + centroids[seg].dist(img.get(p));
+            for d in 1..=8 {
+                match img.neighbor(p, d) {
+                    Some(n) => {
+                        if seg_nums[n]!=seg {
+                            edge_val = edge_val + p_pix.dist(img.get(n));
+                            connectivity = connectivity + 0.125;
+                        }
+                    },
+                    None => (),
+                }
+            }
+        }
+        return (edge_val, connectivity, overall_dev)
     }
 }
 

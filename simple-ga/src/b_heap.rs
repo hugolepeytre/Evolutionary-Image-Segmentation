@@ -60,7 +60,7 @@ impl BinaryHeap {
         }
     }
 
-    pub fn max_heapify_all(&mut self) {
+    pub fn _max_heapify_all(&mut self) {
         for i in (0..self.node_list.len()-1).rev() {
             self.max_heapify(i);
         }

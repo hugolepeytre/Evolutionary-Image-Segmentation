@@ -13,7 +13,9 @@ pub fn output_segmentations(edges : Vec<i32>, original_image : Img, filepath : &
 pub struct Img {
     height : usize,
     width : usize,
+    signed_width : i32,
     length : usize,
+    signed_length : i32,
     pixels : Vec<Pix>,
 }
 
@@ -28,7 +30,7 @@ impl Img {
             let i2 = 3*i;
             pixels.push(Pix::new(tmp[i2], tmp[i2+1], tmp[i2+2]));
         }
-        return Img {height, width, length : height*width, pixels}
+        return Img {height, width, signed_width : width as i32, length : height*width, signed_length : (height*width) as i32, pixels}
     }
 
     pub fn length(&self) -> usize {
@@ -36,12 +38,11 @@ impl Img {
     }
 
     pub fn dist_to_adj(&self, curr_v : usize, dir : i32) -> Option<(usize, f64)> {
-        let (x, y) = self.idx_to_xy(curr_v);
-        let (x2, y2) = match self.neighbor(x, y, dir) {
+        let p2 = match self.neighbor(curr_v, dir) {
             None => return None,
-            Some((p1, p2)) => (p1, p2), // TODO faire que ça marche c'est la 2mer
+            Some(o) => o,
         };
-        return Some((self.xy_to_idx(x2, y2), self.euclid_dist(x, x2, y, y2)))
+        return Some((p2, self.euclid_dist(curr_v, p2)))
     }
 
     pub fn get_opp_dir(dir : i32) -> i32 {
@@ -55,49 +56,39 @@ impl Img {
         }
     }
 
-    fn idx_to_xy(&self, idx : usize) -> (usize, usize) {
-        return (idx % self.width, idx/self.width)
+    fn is_in_bounds(&self, p : i32) -> bool {
+        return 0 <= p && p < self.length() as i32
     }
 
-    fn xy_to_idx(&self, x : usize, y : usize) -> usize {
-        return x + (self.width*y)
-    }
-
-    fn is_in_bounds(&self, x : usize, y : usize) -> bool {
-        return x < self.width && y < self.height
-    }
-
-    fn neighbor(&self, x : usize, y : usize, dir : i32) -> Option<(usize, usize)> {
-        let ib = self.is_in_bounds(x, y);
-        let neigh_ib = match dir {
-            0 => ib,
-            1 => ib && y > 0,
-            2 => x + 1 < self.width,
-            3 => ib && y + 1 < self.height,
-            4 => ib && x > 0,
-            _ => {println!("Shouldn't happen"); ib},
+    pub fn neighbor(&self, p : usize, dir : i32) -> Option<usize> {
+        let tmp_p = p as i32;
+        let tmp_next = match dir {
+            0 => tmp_p,
+            1 => tmp_p - self.signed_width,
+            2 => tmp_p + 1,
+            3 => tmp_p + self.signed_width,
+            4 => tmp_p - 1,
+            5 => tmp_p - self.signed_width + 1,
+            6 => tmp_p + self.signed_width + 1,
+            7 => tmp_p + self.signed_width - 1,
+            8 => tmp_p - self.signed_width - 1,
+            _ => {println!("Shouldn't happen"); tmp_p},
         };
-        if !neigh_ib {
-            return None
-        }
-        else {
-            return match dir {
-                0 => Some((x, y)),
-                1 => Some((x, y - 1)),
-                2 => Some((x + 1, y)),
-                3 => Some((x, y + 1)),
-                4 => Some((x - 1, y)),
-                _ => {println!("Shouldn't happen"); None},
-            }
-        }
+        let next = if self.is_in_bounds(tmp_next) {Some(tmp_next as usize)} else {None};
+        return next
+        
     }
 
-    fn euclid_dist(&self, x1 : usize, x2 : usize, y1 : usize, y2 : usize) -> f64 {
-        return self.pixels[self.xy_to_idx(x1, y1)].dist(&self.pixels[self.xy_to_idx(x2, y2)])
+    fn euclid_dist(&self, p1 : usize, p2 : usize) -> f64 {
+        return self.pixels[p1].dist(&self.pixels[p2])
+    }
+
+    pub fn get(&self, idx : usize) -> &Pix {
+        return &self.pixels[idx];
     }
 }
 
-struct Pix {
+pub struct Pix {
     r : u8,
     g : u8,
     b : u8,
@@ -108,8 +99,8 @@ impl Pix {
         return Pix{r, g, b}
     }
 
-    fn dist(&self, other : &Pix) -> f64 {
-        return ((Self::abs(self.r, other.r).pow(2) + Self::abs(self.g, other.g).pow(2) + Self::abs(self.b, other.b).pow(2)) as f64).sqrt() as u32
+    pub fn dist(&self, other : &Pix) -> f64 {
+        return (Self::abs(self.r, other.r).powf(2.0) + Self::abs(self.g, other.g).powf(2.0) + Self::abs(self.b, other.b).powf(2.0)).sqrt()
     }
 
     fn abs(c1 : u8, c2 : u8) -> f64 {
