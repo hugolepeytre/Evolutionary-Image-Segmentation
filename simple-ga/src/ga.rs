@@ -10,7 +10,7 @@ use crate::b_heap::BinaryHeap;
 use std::collections::HashSet;
 use std::cmp::Ordering;
 use rand::prelude::*;
-use std::u32::MAX;
+use std::f64::MAX;
 
 // Directions for representation : 0 = None, 1 = Up, 2 = Right, 3 = Down, 4 = Left
 pub fn train(input_image : &Img) -> Vec<i32> {

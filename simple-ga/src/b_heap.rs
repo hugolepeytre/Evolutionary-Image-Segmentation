@@ -5,7 +5,7 @@ pub struct BinaryHeap {
 
 #[derive(Clone)]
 struct HeapNode {
-    key : u32,
+    key : f64,
     v_number : usize,
     edge_direction : i32,
 }
@@ -28,7 +28,7 @@ impl BinaryHeap {
         return (idx+1)/2 - 1
     }
 
-    fn decrease_key(&mut self, mut idx : usize, new_key : u32) {
+    fn decrease_key(&mut self, mut idx : usize, new_key : f64) {
         self.node_list[idx].key = new_key;
         let mut p_key = Self::parent(idx);
         while new_key > self.node_list[p_key].key && idx > 0 {
@@ -38,7 +38,7 @@ impl BinaryHeap {
         }
     }
 
-    pub fn insert(&mut self, v_number : usize, key : u32, direction : i32) {
+    pub fn insert(&mut self, v_number : usize, key : f64, direction : i32) {
         self.node_list.push(HeapNode{key, v_number, edge_direction : direction});
         self.decrease_key(self.node_list.len() - 1, key);
     }
@@ -80,14 +80,14 @@ impl BinaryHeap {
         }
     }
 
-    pub fn extract_max(&mut self) -> (u32, usize, i32) {
+    pub fn extract_max(&mut self) -> (f64, usize, i32) {
         self.swap_elems(0, self.node_list.len() - 1);
         let min = self.node_list.pop().unwrap();
         self.max_heapify(0);
         return (min.key, min.v_number, min.edge_direction)
     }
 
-    pub fn try_update_smallest_edge(&mut self, v_num : usize, new_key : u32, new_dir : i32) {
+    pub fn try_update_smallest_edge(&mut self, v_num : usize, new_key : f64, new_dir : i32) {
         if new_key < self.node_list[self.vertex_pos[v_num]].key {
             self.decrease_key(self.vertex_pos[v_num], new_key);
             self.set_dir(v_num, new_dir);

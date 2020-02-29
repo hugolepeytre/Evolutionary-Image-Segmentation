@@ -35,7 +35,7 @@ impl Img {
         return self.length
     }
 
-    pub fn dist_to_adj(&self, curr_v : usize, dir : i32) -> Option<(usize, u32)> {
+    pub fn dist_to_adj(&self, curr_v : usize, dir : i32) -> Option<(usize, f64)> {
         let (x, y) = self.idx_to_xy(curr_v);
         let (x2, y2) = match self.neighbor(x, y, dir) {
             None => return None,
@@ -92,7 +92,7 @@ impl Img {
         }
     }
 
-    fn euclid_dist(&self, x1 : usize, x2 : usize, y1 : usize, y2 : usize) -> u32 {
+    fn euclid_dist(&self, x1 : usize, x2 : usize, y1 : usize, y2 : usize) -> f64 {
         return self.pixels[self.xy_to_idx(x1, y1)].dist(&self.pixels[self.xy_to_idx(x2, y2)])
     }
 }
@@ -108,11 +108,11 @@ impl Pix {
         return Pix{r, g, b}
     }
 
-    fn dist(&self, other : &Pix) -> u32 {
+    fn dist(&self, other : &Pix) -> f64 {
         return ((Self::abs(self.r, other.r).pow(2) + Self::abs(self.g, other.g).pow(2) + Self::abs(self.b, other.b).pow(2)) as f64).sqrt() as u32
     }
 
-    fn abs(c1 : u8, c2 : u8) -> u32 {
-        return if c1 > c2 {(c1-c2) as u32} else {(c2-c1) as u32};
+    fn abs(c1 : u8, c2 : u8) -> f64 {
+        return if c1 > c2 {(c1-c2) as f64} else {(c2-c1) as f64};
     }
 }
