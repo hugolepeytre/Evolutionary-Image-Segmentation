@@ -1,3 +1,5 @@
+use std::usize::MAX;
+
 pub struct BinaryHeap {
     node_list : Vec<HeapNode>,
     vertex_pos : Vec<usize>,
@@ -10,7 +12,7 @@ struct HeapNode {
     edge_direction : i32,
 }
 
-// TODO : replace all by swap_elem and make sure vertex_pos is always up to date
+// TODO : keep track of extracted stuff, and don't do functions on them
 impl BinaryHeap {
     pub fn new() -> BinaryHeap {
         return BinaryHeap {node_list : Vec::new(), vertex_pos : Vec::new()}
@@ -25,13 +27,15 @@ impl BinaryHeap {
     }
 
     fn parent(idx : usize) -> usize {
+        if idx == 0 {return MAX}
         return (idx+1)/2 - 1
     }
 
     fn decrease_key(&mut self, mut idx : usize, new_key : f64) {
         self.node_list[idx].key = new_key;
+        if idx == 0 {return}
         let mut p_key = Self::parent(idx);
-        while new_key > self.node_list[p_key].key && idx > 0 {
+        while idx > 0 && new_key < self.node_list[p_key].key {
             self.swap_elems(idx, p_key);
             idx = p_key;
             p_key = Self::parent(idx);
@@ -47,13 +51,13 @@ impl BinaryHeap {
         let mut over = false;
         while !over {
             let min_child = self.min_child(idx);
-            if self.node_list[min_child].key < self.node_list[idx].key {
+            if min_child >= self.node_list.len() {
+                over = true;
+            }
+            else if self.node_list[min_child].key < self.node_list[idx].key {
                 self.swap_elems(idx, min_child)
             }
             else {
-                over = true;
-            }
-            if Self::left_child(idx) >= self.node_list.len() {
                 over = true;
             }
             idx = min_child;
@@ -80,14 +84,16 @@ impl BinaryHeap {
         }
     }
 
-    pub fn extract_max(&mut self) -> (f64, usize, i32) {
+    pub fn extract_min(&mut self) -> (f64, usize, i32) {
         self.swap_elems(0, self.node_list.len() - 1);
         let min = self.node_list.pop().unwrap();
         self.max_heapify(0);
+        self.vertex_pos[min.v_number] = MAX;
         return (min.key, min.v_number, min.edge_direction)
     }
 
     pub fn try_update_smallest_edge(&mut self, v_num : usize, new_key : f64, new_dir : i32) {
+        if self.vertex_pos[v_num] == MAX {return}
         if new_key < self.node_list[self.vertex_pos[v_num]].key {
             self.decrease_key(self.vertex_pos[v_num], new_key);
             self.set_dir(v_num, new_dir);
@@ -105,6 +111,7 @@ impl BinaryHeap {
     }
 
     pub fn find_vertices(&mut self) {
+        self.vertex_pos = vec![0; self.node_list.len()];
         for (i, node) in self.node_list.iter().enumerate() {
             self.vertex_pos[node.v_number] = i;
         }

@@ -57,7 +57,6 @@ impl Img {
         let width = data.width() as usize;
         let mut pixels : Vec<Pix> = Vec::new();
         let tmp = data.into_raw();
-        println!("Data has {} values", tmp.len());
         for i in 0..tmp.len()/3 {
             let i2 = 3*i;
             pixels.push(Pix::new(tmp[i2], tmp[i2+1], tmp[i2+2]));
@@ -106,7 +105,14 @@ impl Img {
             8 => tmp_p - self.signed_width - 1,
             _ => {println!("Shouldn't happen"); return None},
         };
-        let next = if self.is_in_bounds(tmp_next) {Some(tmp_next as usize)} else {None};
+        let x_pos = tmp_next%self.signed_width;
+        let ib = self.is_in_bounds(tmp_next);
+        let ib = match dir {
+            2 | 5 | 6 => ib && x_pos != 0,
+            4 | 7 | 8 => ib && x_pos != self.signed_width - 1,
+            _ => ib,
+        };
+        let next = if ib {Some(tmp_next as usize)} else {None};
         return next
         
     }
@@ -120,7 +126,7 @@ impl Img {
     }
 
     pub fn is_on_border(&self, p : usize, segs : &Vec<usize>) -> bool {
-        for d in 1..=8 {
+        for d in 1..=4 {
             match self.neighbor(p, d) {
                 None => return true,
                 Some(p2) => if segs[p]!=segs[p2] {return true},

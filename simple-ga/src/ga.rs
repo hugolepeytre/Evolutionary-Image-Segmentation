@@ -1,13 +1,13 @@
 const POP_SIZE : usize = 50;
 const TOURNAMENT_SIZE : usize = 4;
-const GENERATIONS : usize = 100;
+const GENERATIONS : usize = 10;
 
 const MUT_PROB : f64 = 0.1;
 const CROSS_PROB : f64 = 1.0;
 
-const OD_WEIGHT : f64 = 1.0;
-const CO_WEIGHT : f64 = 1.0;
-const EV_WEIGHT : f64 = 1.0;
+const OD_WEIGHT : f64 = 0.00525;
+const CO_WEIGHT : f64 = 0.9945;
+const EV_WEIGHT : f64 = 0.00025;
 
 use crate::image_proc::Img;
 use crate::image_proc::Pix;
@@ -23,7 +23,8 @@ pub fn train(input_image : &Img) -> Vec<usize> {
     while pop.len() < POP_SIZE {
         pop.push(Genome::random(input_image));
     }
-    for _ in 0..GENERATIONS {
+    for i in 0..GENERATIONS {
+        println!("Gen {}", i+1);
         let mut new_indiv : HashSet<Genome> = HashSet::new(); 
         while new_indiv.len() < POP_SIZE {
             let p1 = tournament_select(&pop);
@@ -71,7 +72,7 @@ impl Genome {
         vec_dist_heap.try_update_smallest_edge(start, 0.0, 0);
 
         while !vec_dist_heap.is_empty() {
-            let (dist, curr_v, dir) = vec_dist_heap.extract_max();
+            let (dist, curr_v, dir) = vec_dist_heap.extract_min();
             rd_edges[curr_v] = dir;
             for d in 1..=4 {
                 match img.dist_to_adj(curr_v, d) {
@@ -80,6 +81,7 @@ impl Genome {
                 }
             }
         }
+
         return Genome::new(Self::get_fitness(img, &rd_edges), rd_edges)
     }
 
@@ -109,6 +111,8 @@ impl Genome {
     fn get_fitness(img : &Img, edges : &Vec<i32>) -> i32 {
         let (seg_nums, centroids) = Self::find_segments(img, edges);
         let (edge_val, connectivity, overall_dev) = Self::get_measures(img, &seg_nums, &centroids);
+        println!("e {}, c {}, o {}", edge_val, connectivity, overall_dev);
+        println!("{} segments", centroids.len());
         let fit = edge_val as f64 * EV_WEIGHT - connectivity as f64 * CO_WEIGHT - overall_dev as f64 * OD_WEIGHT;
         return fit as i32
     }
@@ -116,53 +120,38 @@ impl Genome {
     fn find_segments(img : &Img, edges : &Vec<i32>) -> (Vec<usize>, Vec<Pix>) {
         let mut seg_num = vec![0; edges.len()];
         let mut segments : Vec<HashSet<usize>> = Vec::new();
-        let mut treated : HashSet<usize> = HashSet::new();
+        let mut untreated : HashSet<usize> = HashSet::new();
         let mut centroid_sums : Vec<(u32, u32, u32)> = Vec::new();
-        for v in 0..edges.len() {
-            if !treated.contains(&v) {
-                let mut new_set : HashSet<usize> = HashSet::new();
-                let mut new_centroid = (0, 0, 0);
-                let mut curr_v = v;
-                loop {
-                    if treated.contains(&curr_v) {
-                        if new_set.contains(&curr_v) {
-                            segments.push(new_set);
-                            centroid_sums.push(new_centroid);
-                            break
-                        }
-                        else {
-                            let mut s_idx = 0;
-                            for (i, s) in segments.iter().enumerate() {
-                                if s.contains(&curr_v) {
-                                    s_idx = i;
-                                }
-                            }
-                            centroid_sums[s_idx] = add_triplets(centroid_sums[s_idx], new_centroid);
-                            segments[s_idx] = segments[s_idx].union(&new_set).map(|&n| n).collect();
-                            break
-                        }
-                    }
-                    else {
-                        treated.insert(curr_v);
-                        new_set.insert(curr_v);
-                        new_centroid = img.get(curr_v).add_to_centroid_sum(new_centroid);
-                        match img.neighbor(curr_v, edges[curr_v]) {
-                            None => {
-                                segments.push(new_set);
-                                centroid_sums.push(new_centroid);
-                                break
-                            },
-                            Some(new_v) => curr_v = new_v,
-                        }
-                    }
-                }
+        let mut adj_list : Vec<Vec<usize>> = vec![Vec::new(); img.length()];
+        for v in 0..img.length() {
+            untreated.insert(v);
+            match img.neighbor(v, edges[v]) {
+                None => (),
+                Some(n) => {
+                    adj_list[v].push(n);
+                    adj_list[n].push(v);
+                },
             }
         }
+
+        while !untreated.is_empty() {
+            let &v = untreated.iter().next().unwrap();
+            let mut next_seg = HashSet::new();
+            let mut centr = (0, 0, 0);
+            Self::add_span(v, &mut untreated, &mut next_seg, &adj_list);
+            for &a in &next_seg {
+                centr = img.get(a).add_to_centroid_sum(centr);
+            }
+            segments.push(next_seg);
+            centroid_sums.push(centr);
+        }
+        
         for (i, seg) in segments.iter().enumerate() {
             for &v in seg {
                 seg_num[v] = i;
             }
         }
+
         let mut centroids = Vec::new();
         for i in 0..centroid_sums.len() {
             let (r_sum, g_sum, b_sum) = centroid_sums[i];
@@ -170,6 +159,15 @@ impl Genome {
             centroids.push(Pix::new((r_sum/num_pixels) as u8, (g_sum/num_pixels) as u8, (b_sum/num_pixels) as u8));
         }
         return (seg_num, centroids)
+    }
+
+    fn add_span(v : usize, untreated : &mut HashSet<usize>, treated : &mut HashSet<usize>, adj_list : &Vec<Vec<usize>>) {
+        if treated.contains(&v) {return}
+        untreated.remove(&v);
+        treated.insert(v);
+        for &down_v in &adj_list[v] {
+            Self::add_span(down_v, untreated, treated, adj_list);
+        }
     }
 
     fn get_measures(img : &Img, seg_nums : &Vec<usize>, centroids : &Vec<Pix>) -> (f64, f64, f64) {
@@ -201,8 +199,4 @@ fn tournament_select(pop : &Vec<Genome>) -> usize {
     let mut candidates : Vec<usize> = (0..TOURNAMENT_SIZE).map(|_| rng.gen_range(0, pop.len())).collect();
     candidates.sort();
     return candidates.pop().unwrap()
-}
-
-fn add_triplets(t1 : (u32, u32, u32), t2 : (u32, u32, u32)) -> (u32, u32, u32){
-    return (t1.0 + t2.0, t1.1 + t2.1, t1.2 + t2.2)
 }
