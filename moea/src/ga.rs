@@ -5,15 +5,10 @@ const GENERATIONS : usize = 100;
 const MUT_PROB : f64 = 0.1;
 const CROSS_PROB : f64 = 1.0;
 
-const OD_WEIGHT : f64 = 0.0018;
-const CO_WEIGHT : f64 = 0.998;
-const EV_WEIGHT : f64 = 0.0002;
-
 use crate::image_proc::Img;
 use crate::image_proc::Pix;
 use crate::b_heap::BinaryHeap;
 use std::collections::HashSet;
-use std::cmp::Ordering;
 use rand::prelude::*;
 use std::f64::MAX;
 
@@ -25,7 +20,19 @@ pub fn train(input_image : &Img) -> Vec<usize> {
     }
     for i in 0..GENERATIONS {
         println!("Gen {}", i+1);
-        
+        let pool = pop.clone();
+        let mut new_pop : HashSet<Genome> = pop.into_iter().collect();
+        while new_pop.len() < 2*POP_SIZE {
+            let p1 = tournament_select(&pool);
+            let p2 = tournament_select(&pool);
+            let c1 = ((&pool[p1]).crossover(input_image, &pool[p2])).mutate();
+            let c2 = ((&pool[p2]).crossover(input_image, &pool[p1])).mutate();
+            new_pop.insert(c1);
+            new_pop.insert(c2);
+        }
+        pop = new_pop.into_iter().collect();
+        rank_crowding_sort(&mut pop);
+        pop.drain(0..POP_SIZE);
     }
     let best = pop.pop().unwrap();
     let segs = Genome::find_segments(input_image, &best.edges).0;
@@ -36,14 +43,17 @@ pub fn train(input_image : &Img) -> Vec<usize> {
 #[derive(Hash)]
 #[derive(PartialEq)]
 #[derive(Eq)]
+#[derive(Clone)]
 struct Genome {
-    fitness : i32,
+    edge_value : i32,
+    connectivity : i32,
+    overall_dev : i32,
     edges : Vec<i32>,
 }
 
 impl Genome {
-    fn new(fitness : i32, edges : Vec<i32>) -> Genome {
-        return Genome {fitness, edges};
+    fn new(measures : (i32, i32, i32), edges : Vec<i32>) -> Genome {
+        return Genome {edge_value : measures.0, connectivity : measures.1, overall_dev : measures.2, edges};
     }
 
     fn random(img : &Img) -> Genome {
@@ -91,15 +101,14 @@ impl Genome {
             let fitness = Self::get_fitness(img, &new_vec);
             return Genome::new(fitness, new_vec)
         }
-        return Genome::new(self.fitness, self.edges.clone())
+        return (*self).clone()
     }
 
-    fn get_fitness(img : &Img, edges : &Vec<i32>) -> i32 {
+    fn get_fitness(img : &Img, edges : &Vec<i32>) -> (i32, i32, i32) {
         let (seg_nums, centroids) = Self::find_segments(img, edges);
         let (edge_val, connectivity, overall_dev) = Self::get_measures(img, &seg_nums, &centroids);
         println!("{} segments", centroids.len());
-        let fit = edge_val as f64 * EV_WEIGHT - connectivity as f64 * CO_WEIGHT - overall_dev as f64 * OD_WEIGHT;
-        return fit as i32
+        return (edge_val as i32, connectivity as i32, overall_dev as i32)
     }
 
     fn find_segments(img : &Img, edges : &Vec<i32>) -> (Vec<usize>, Vec<Pix>) {
@@ -184,4 +193,12 @@ fn tournament_select(pop : &Vec<Genome>) -> usize {
     let mut candidates : Vec<usize> = (0..TOURNAMENT_SIZE).map(|_| rng.gen_range(0, pop.len())).collect();
     candidates.sort();
     return candidates.pop().unwrap()
+}
+
+fn rank_crowding_sort(pop : &mut Vec<Genome>) {
+    // TODO
+    // sorting by rank : rank is the number of solutions it's dominated by
+    // then make a vec for each rank, that you sort by crowding
+    // p.71
+    // Notes : crowding distance : p.85
 }
