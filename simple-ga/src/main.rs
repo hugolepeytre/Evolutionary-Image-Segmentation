@@ -4,7 +4,7 @@ mod b_heap;
 
 const FILEPATH1 : &str = "C://Users//Moi//Desktop//Desktop//EPFL//Bachelor//BA6//IT3708-Bio-Inspired-Artificial-Intelligence//Project 2//Training//";
 const FILEPATH2 : &str = "//Test image.jpg";
-const CHOSEN_IMAGE : usize = 0;
+const CHOSEN_IMAGE : usize = 6;
 
 fn main() {
     let im_numbers : Vec<u32> = vec![86016, 118035, 147091, 176035, 176039, 216066, 353013];

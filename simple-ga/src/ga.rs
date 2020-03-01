@@ -1,13 +1,13 @@
 const POP_SIZE : usize = 50;
 const TOURNAMENT_SIZE : usize = 4;
-const GENERATIONS : usize = 10;
+const GENERATIONS : usize = 100;
 
 const MUT_PROB : f64 = 0.1;
 const CROSS_PROB : f64 = 1.0;
 
-const OD_WEIGHT : f64 = 0.00525;
-const CO_WEIGHT : f64 = 0.9945;
-const EV_WEIGHT : f64 = 0.00025;
+const OD_WEIGHT : f64 = 0.00195;
+const CO_WEIGHT : f64 = 0.998;
+const EV_WEIGHT : f64 = 0.00005;
 
 use crate::image_proc::Img;
 use crate::image_proc::Pix;
@@ -34,11 +34,12 @@ pub fn train(input_image : &Img) -> Vec<usize> {
             new_indiv.insert(c1);
             new_indiv.insert(c2);
         }
+        pop = Vec::new(); // Destroying all previous parents
         for new_p in new_indiv {
             pop.push(new_p);
         }
         pop.sort_by(|a, b| match a.fitness.partial_cmp(&b.fitness) {None => Ordering::Equal, Some(eq) => eq});
-        pop.drain(0..POP_SIZE);
+        // pop.drain(0..POP_SIZE);
         println!("Best fitness : {}", pop[pop.len() - 1].fitness);
     }
     let best = pop.pop().unwrap();
@@ -111,7 +112,6 @@ impl Genome {
     fn get_fitness(img : &Img, edges : &Vec<i32>) -> i32 {
         let (seg_nums, centroids) = Self::find_segments(img, edges);
         let (edge_val, connectivity, overall_dev) = Self::get_measures(img, &seg_nums, &centroids);
-        println!("e {}, c {}, o {}", edge_val, connectivity, overall_dev);
         println!("{} segments", centroids.len());
         let fit = edge_val as f64 * EV_WEIGHT - connectivity as f64 * CO_WEIGHT - overall_dev as f64 * OD_WEIGHT;
         return fit as i32
