@@ -1,31 +1,5 @@
-First, do the project in Rust
-Then in Python to check speed difference
-
-Image segmentation : 2 types 
-	- Pixels on the border of segments are green
-	- Image is all white except pixels on border segements which are green
-	
-Algorithms : 2 types
-	- Weighted-sum (?) Simple GA
-	- MOEA (NSGA-11 or SPEA)
-	
-Choose a color space (RGB or CIA)
-
-For all algos :
-Choose a representation (choose or make new, usually graph or tree-based)
-3 objectives to optimize, described p.4 (use Pareto-optimality in MOEA, and blend them with empicically chosen proportions in simple GA)
-Evaluation criterion : PRI (p.5-6). Allows to choose the best Pareto-optimal solution in MOEA, and judge the effectiveness of a solution
-
-For image processing : image crate
-
-Genome representation : an array same size as the image, with values 0 to 4, 0 is neutral, and 1 2 3 4 are links to the top right bottom left respectively
 
 
 Questions :
-PRI is not fitness function ?
-Does color space influence results ?
-Can I see an implementation of previous GA ?
-
-Things to try later :
-SPEA instead of NSGA-11
-Use the PRI as my fitness function for simple GA
+Uniform crossover seems terrible and makes too many segments ?
+Determining rank has 2 conflicting definitions, in slide 74 and 67

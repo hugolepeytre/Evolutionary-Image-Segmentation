@@ -6,40 +6,42 @@ pub fn open_image(filepath : &str) -> Option<Img> {
     return Some(Img::new(im))
 }
 
-pub fn output_segmentations(original_image : Img, segs : Vec<usize>, filepath_num : String) {
-    let mut imgbuf_type1 = image::ImageBuffer::new(original_image.width as u32, original_image.height as u32);
-    let mut imgbuf_type2 = image::ImageBuffer::new(original_image.width as u32, original_image.height as u32);
-    for (x, y, pixel) in imgbuf_type1.enumerate_pixels_mut() {
-        let r : u8;
-        let g : u8;
-        let b : u8;
-        let pos = x as usize + y as usize * original_image.width;
-        if original_image.is_on_border(pos, &segs) {
-            r = 0;
-            g = 255;
-            b = 0;
+pub fn output_segmentations(original_image : Img, pfront : Vec<Vec<usize>>, filepath_num : String) {
+    for (i, seg) in pfront.into_iter().enumerate() {
+        let mut imgbuf_type1 = image::ImageBuffer::new(original_image.width as u32, original_image.height as u32);
+        let mut imgbuf_type2 = image::ImageBuffer::new(original_image.width as u32, original_image.height as u32);
+        for (x, y, pixel) in imgbuf_type1.enumerate_pixels_mut() {
+            let r : u8;
+            let g : u8;
+            let b : u8;
+            let pos = x as usize + y as usize * original_image.width;
+            if original_image.is_on_border(pos, &seg) {
+                r = 0;
+                g = 255;
+                b = 0;
+            }
+            else {
+                let p = original_image.get(pos);
+                r = p.r;
+                g = p.g;
+                b = p.b;
+            }
+            *pixel = image::Rgb([r, g, b]);
         }
-        else {
-            let p = original_image.get(pos);
-            r = p.r;
-            g = p.g;
-            b = p.b;
+        imgbuf_type1.save(format!("result_img{}_type1_sol{}.jpg", filepath_num, i).as_str()).unwrap();
+        for (x, y, pixel) in imgbuf_type2.enumerate_pixels_mut() {
+            let pos = x as usize + y as usize * original_image.width;
+            if original_image.is_on_border(pos, &seg) {
+                let zero = 0 as u8;
+                *pixel = image::Rgb([zero, zero,zero]);
+            }
+            else {
+                let max = 255 as u8;
+                *pixel = image::Rgb([max, max, max]);
+            }
         }
-        *pixel = image::Rgb([r, g, b]);
+        imgbuf_type2.save(format!("result_img{}_type2_sol{}.jpg", filepath_num, i).as_str()).unwrap();
     }
-    imgbuf_type1.save(format!("result_img{}_type1.jpg", filepath_num).as_str()).unwrap();
-    for (x, y, pixel) in imgbuf_type2.enumerate_pixels_mut() {
-        let pos = x as usize + y as usize * original_image.width;
-        if original_image.is_on_border(pos, &segs) {
-            let zero = 0 as u8;
-            *pixel = image::Rgb([zero, zero,zero]);
-        }
-        else {
-            let max = 255 as u8;
-            *pixel = image::Rgb([max, max, max]);
-        }
-    }
-    imgbuf_type2.save(format!("result_img{}_type2.jpg", filepath_num).as_str()).unwrap();
 }
 
 pub struct Img {

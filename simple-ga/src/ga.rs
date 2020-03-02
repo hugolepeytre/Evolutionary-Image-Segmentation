@@ -29,8 +29,8 @@ pub fn train(input_image : &Img) -> Vec<usize> {
         while new_indiv.len() < POP_SIZE {
             let p1 = tournament_select(&pop);
             let p2 = tournament_select(&pop);
-            let c1 = ((&pop[p1]).crossover(input_image, &pop[p2])).mutate();
-            let c2 = ((&pop[p2]).crossover(input_image, &pop[p1])).mutate();
+            let c1 = ((&pop[p1]).crossover_order1(input_image, &pop[p2])).mutate(input_image);
+            let c2 = ((&pop[p2]).crossover_order1(input_image, &pop[p1])).mutate(input_image);
             new_indiv.insert(c1);
             new_indiv.insert(c2);
         }
@@ -51,6 +51,7 @@ pub fn train(input_image : &Img) -> Vec<usize> {
 #[derive(Hash)]
 #[derive(PartialEq)]
 #[derive(Eq)]
+#[derive(Clone)]
 struct Genome {
     fitness : i32,
     edges : Vec<i32>,
@@ -86,7 +87,7 @@ impl Genome {
         return Genome::new(Self::get_fitness(img, &rd_edges), rd_edges)
     }
 
-    fn mutate(mut self) -> Genome {
+    fn mutate(mut self, img : &Img) -> Genome {
         let mut rng = thread_rng();
         let tmp : f64 = rng.gen();
         if tmp < MUT_PROB {
@@ -94,7 +95,7 @@ impl Genome {
             let new_val : i32 = rng.gen_range(0, 5);
             self.edges[idx] = new_val;
         }
-        return self
+        return Self::new(Self::get_fitness(img, &self.edges), self.edges)
     }
 
     fn crossover(&self, img : &Img, other : &Genome) -> Genome {
@@ -106,7 +107,23 @@ impl Genome {
             let fitness = Self::get_fitness(img, &new_vec);
             return Genome::new(fitness, new_vec)
         }
-        return Genome::new(self.fitness, self.edges.clone())
+        return (*self).clone()
+    }
+
+    fn crossover_order1(&self, img : &Img, other : &Genome) -> Genome {
+        let mut rng = thread_rng();
+        let tmp : f64 = rng.gen();
+        if tmp < CROSS_PROB {
+            let mut new_vec = Vec::new();
+            let begin = rng.gen_range(0, self.edges.len());
+            let length = rng.gen_range(0, self.edges.len() - begin);
+            for &n in other.edges.iter().take(begin).chain(self.edges.iter().skip(begin).take(length).chain(other.edges.iter().skip(begin + length))) {
+                new_vec.push(n);
+            }
+            let fitness = Self::get_fitness(img, &new_vec);
+            return Genome::new(fitness, new_vec)
+        }
+        return (*self).clone()
     }
 
     fn get_fitness(img : &Img, edges : &Vec<i32>) -> i32 {

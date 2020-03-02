@@ -13,7 +13,7 @@ use rand::prelude::*;
 use std::f64::MAX;
 
 // Directions for representation : 0 = None, 1 = Up, 2 = Right, 3 = Down, 4 = Left
-pub fn train(input_image : &Img) -> Vec<usize> {
+pub fn train(input_image : &Img) -> Vec<Vec<usize>> {
     let mut pop : Vec<Genome> = Vec::new();
     while pop.len() < POP_SIZE {
         pop.push(Genome::random(input_image));
@@ -25,8 +25,8 @@ pub fn train(input_image : &Img) -> Vec<usize> {
         while new_pop.len() < 2*POP_SIZE {
             let p1 = tournament_select(&pool);
             let p2 = tournament_select(&pool);
-            let c1 = ((&pool[p1]).crossover(input_image, &pool[p2])).mutate();
-            let c2 = ((&pool[p2]).crossover(input_image, &pool[p1])).mutate();
+            let c1 = ((&pool[p1]).crossover_order1(input_image, &pool[p2])).mutate(input_image);
+            let c2 = ((&pool[p2]).crossover_order1(input_image, &pool[p1])).mutate(input_image);
             new_pop.insert(c1);
             new_pop.insert(c2);
         }
@@ -34,9 +34,8 @@ pub fn train(input_image : &Img) -> Vec<usize> {
         pop = rank_crowding_sort(pop);
         pop.drain(0..POP_SIZE);
     }
-    // TODO : output the whole pareto front instead of just the best solution
-    let best = pop.pop().unwrap();
-    let segs = Genome::find_segments(input_image, &best.edges).0;
+    let bests = get_pareto_front(pop);
+    let segs : Vec<Vec<usize>> = bests.into_iter().map(|g| Genome::find_segments(input_image, &g.edges).0).collect();
     return segs;
 }
 
@@ -82,7 +81,7 @@ impl Genome {
         return Genome::new(Self::get_fitness(img, &rd_edges), rd_edges)
     }
 
-    fn mutate(mut self) -> Genome {
+    fn mutate(mut self, img : &Img) -> Genome {
         let mut rng = thread_rng();
         let tmp : f64 = rng.gen();
         if tmp < MUT_PROB {
@@ -90,7 +89,7 @@ impl Genome {
             let new_val : i32 = rng.gen_range(0, 5);
             self.edges[idx] = new_val;
         }
-        return self
+        return Self::new(Self::get_fitness(img, &self.edges), self.edges)
     }
 
     fn crossover(&self, img : &Img, other : &Genome) -> Genome {
@@ -105,10 +104,26 @@ impl Genome {
         return (*self).clone()
     }
 
+    fn crossover_order1(&self, img : &Img, other : &Genome) -> Genome {
+        let mut rng = thread_rng();
+        let tmp : f64 = rng.gen();
+        if tmp < CROSS_PROB {
+            let mut new_vec = Vec::new();
+            let begin = rng.gen_range(0, self.edges.len());
+            let length = rng.gen_range(0, self.edges.len() - begin);
+            for &n in other.edges.iter().take(begin).chain(self.edges.iter().skip(begin).take(length).chain(other.edges.iter().skip(begin + length))) {
+                new_vec.push(n);
+            }
+            let fitness = Self::get_fitness(img, &new_vec);
+            return Genome::new(fitness, new_vec)
+        }
+        return (*self).clone()
+    }
+
     fn get_fitness(img : &Img, edges : &Vec<i32>) -> (i32, i32, i32) {
         let (seg_nums, centroids) = Self::find_segments(img, edges);
         let (edge_val, connectivity, overall_dev) = Self::get_measures(img, &seg_nums, &centroids);
-        println!("{} segments", centroids.len());
+        // println!("{} segments", centroids.len());
         return (edge_val as i32, connectivity as i32, overall_dev as i32)
     }
 
@@ -231,11 +246,31 @@ fn rank_crowding_sort(mut pop : Vec<Genome>) -> Vec<Genome> {
         let r = sort_by_crowding(by_rank.pop().unwrap());
         pop.extend(r);
     }
+    println!("Fronts : {}", max_rank);
+    return pop
+}
+
+fn get_pareto_front(pop : Vec<Genome>) -> Vec<Genome> {
+    let mut front : Vec<Genome> = Vec::new();
+    for e1 in &pop {
+        let mut rank = 0;
+        for e2 in &pop {
+            if e1.dominated_by(e2) {rank = rank + 1;}
+        }
+        if rank == 0 {
+            front.push((*e1).clone())
+        }
+    }
+    println!("Front size : {}", front.len());
     return pop
 }
 
 fn sort_by_crowding(mut subpop : Vec<Genome>) -> Vec<Genome> {
     // TODO
-    // Sort vec by crowding (p.71, p.85)
+    // For each measure
+        // Sort the vector by that measure
+        // For each point, add to its distance +MAX/3 if it's first or last
+        // and the difference between the measure above and below over the measure span if it's not
+    //  Sort the vector by distance (biggest is best)
     return subpop
 }

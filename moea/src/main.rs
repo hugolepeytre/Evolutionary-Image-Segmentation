@@ -10,6 +10,6 @@ fn main() {
     let im_numbers : Vec<u32> = vec![86016, 118035, 147091, 176035, 176039, 216066, 353013];
     let filepath_num = im_numbers[CHOSEN_IMAGE].to_string();
     let img = image_proc::open_image(format!("{}{}{}", FILEPATH1, filepath_num, FILEPATH2).as_str()).unwrap();
-    let segs = ga::train(&img);
-    image_proc::output_segmentations(img, segs, filepath_num);
+    let pfront = ga::train(&img);
+    image_proc::output_segmentations(img, pfront, filepath_num);
 }
