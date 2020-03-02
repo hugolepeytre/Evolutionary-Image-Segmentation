@@ -31,9 +31,10 @@ pub fn train(input_image : &Img) -> Vec<usize> {
             new_pop.insert(c2);
         }
         pop = new_pop.into_iter().collect();
-        rank_crowding_sort(&mut pop);
+        pop = rank_crowding_sort(pop);
         pop.drain(0..POP_SIZE);
     }
+    // TODO : output the whole pareto front instead of just the best solution
     let best = pop.pop().unwrap();
     let segs = Genome::find_segments(input_image, &best.edges).0;
     return segs;
@@ -186,6 +187,22 @@ impl Genome {
         }
         return (edge_val, connectivity, overall_dev)
     }
+
+    fn dominated_by(&self, other : &Genome) -> bool {
+        let mut at_least = true;
+        let mut better = false;
+        if other.edge_value > self.edge_value 
+            || other.connectivity < self.connectivity 
+            || other.overall_dev < self.overall_dev {
+            better = true;
+        }
+        if other.edge_value < self.edge_value 
+            || other.connectivity > self.connectivity 
+            || other.overall_dev > self.overall_dev {
+            at_least = false;
+        }
+        return at_least && better
+    }
 }
 
 fn tournament_select(pop : &Vec<Genome>) -> usize {
@@ -195,10 +212,30 @@ fn tournament_select(pop : &Vec<Genome>) -> usize {
     return candidates.pop().unwrap()
 }
 
-fn rank_crowding_sort(pop : &mut Vec<Genome>) {
+fn rank_crowding_sort(mut pop : Vec<Genome>) -> Vec<Genome> {
+    let mut ranks : Vec<usize> = Vec::new();
+    let mut max_rank = 0;
+    for e1 in &pop {
+        let mut rank = 0;
+        for e2 in &pop {
+            if e1.dominated_by(e2) {rank = rank + 1;}
+        }
+        if rank > max_rank {max_rank = rank;}
+        ranks.push(rank);
+    }
+    let mut by_rank : Vec<Vec<Genome>> = vec![Vec::new(); max_rank + 1];
+    while !pop.is_empty() {
+        by_rank[ranks.pop().unwrap()].push(pop.pop().unwrap());
+    }
+    while !by_rank.is_empty() {
+        let r = sort_by_crowding(by_rank.pop().unwrap());
+        pop.extend(r);
+    }
+    return pop
+}
+
+fn sort_by_crowding(mut subpop : Vec<Genome>) -> Vec<Genome> {
     // TODO
-    // sorting by rank : rank is the number of solutions it's dominated by
-    // then make a vec for each rank, that you sort by crowding
-    // p.71
-    // Notes : crowding distance : p.85
+    // Sort vec by crowding (p.71, p.85)
+    return subpop
 }
