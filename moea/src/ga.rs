@@ -2,7 +2,7 @@ const POP_SIZE : usize = 50;
 const TOURNAMENT_SIZE : usize = 4;
 const GENERATIONS : usize = 100;
 
-const MUT_PROB : f64 = 0.1;
+const MUT_PROB : f64 = 0.7;
 const CROSS_PROB : f64 = 1.0;
 
 use crate::image_proc::Img;
@@ -10,7 +10,9 @@ use crate::image_proc::Pix;
 use crate::b_heap::BinaryHeap;
 use std::collections::HashSet;
 use rand::prelude::*;
-use std::f64::MAX;
+use std::cmp::Ordering;
+use std::f64::MAX as MAX_F64;
+use std::i32::MAX as MAX_I32;
 
 // Directions for representation : 0 = None, 1 = Up, 2 = Right, 3 = Down, 4 = Left
 pub fn train(input_image : &Img) -> Vec<Vec<usize>> {
@@ -62,7 +64,7 @@ impl Genome {
         let mut vec_dist_heap = BinaryHeap::new();
         let start : usize = rng.gen_range(0, img.length()) as usize;
         for v in 0..img.length() {
-            vec_dist_heap.insert(v as usize, MAX, 0);
+            vec_dist_heap.insert(v as usize, MAX_F64, 0);
         }
         vec_dist_heap.find_vertices();
         vec_dist_heap.try_update_smallest_edge(start, 0.0, 0);
@@ -92,7 +94,7 @@ impl Genome {
         return Self::new(Self::get_fitness(img, &self.edges), self.edges)
     }
 
-    fn crossover(&self, img : &Img, other : &Genome) -> Genome {
+    fn crossover_uniform(&self, img : &Img, other : &Genome) -> Genome {
         let mut rng = thread_rng();
         let tmp : f64 = rng.gen();
         if tmp < CROSS_PROB {
@@ -246,7 +248,7 @@ fn rank_crowding_sort(mut pop : Vec<Genome>) -> Vec<Genome> {
         let r = sort_by_crowding(by_rank.pop().unwrap());
         pop.extend(r);
     }
-    println!("Fronts : {}", max_rank);
+    println!("Fronts : {}", max_rank+1);
     return pop
 }
 
@@ -265,12 +267,56 @@ fn get_pareto_front(pop : Vec<Genome>) -> Vec<Genome> {
     return pop
 }
 
-fn sort_by_crowding(mut subpop : Vec<Genome>) -> Vec<Genome> {
-    // TODO
-    // For each measure
-        // Sort the vector by that measure
-        // For each point, add to its distance +MAX/3 if it's first or last
-        // and the difference between the measure above and below over the measure span if it's not
+fn sort_by_crowding(subpop : Vec<Genome>) -> Vec<Genome> {
+    println!("Front has length {}", subpop.len());
+    if subpop.len() == 0 {return subpop}
+    let mut sub : Vec<(Genome, f64)> = Vec::new();
+    // Finding span for the 3 measures
+    let (min_e, max_e, min_o, max_o, min_c, max_c) = subpop.iter().fold((0, MAX_I32, 0, MAX_I32, 0, MAX_I32),  
+            |(mut min_e, mut max_e, mut min_o, mut max_o, mut min_c, mut max_c), g| {
+                if g.edge_value > max_e {max_e = g.edge_value;}
+                if g.edge_value < min_e {min_e = g.edge_value;}
+                if g.overall_dev > max_o {max_o = g.overall_dev;}
+                if g.overall_dev < min_o {min_o = g.overall_dev;}
+                if g.connectivity > max_c {max_c = g.connectivity;}
+                if g.connectivity < min_c {min_c = g.connectivity;}
+                (min_e, max_e, min_o, max_o, min_c, max_c)
+            });
+    let (span_e, span_o, span_c) = ((max_e - min_e) as f64, (max_o - min_o) as f64, (max_c - min_c) as f64);
+    
+    for g in subpop {
+        sub.push((g, 0.0));
+    }
+    let len = sub.len();
+
+    // Sorting and adding distance values for edge value
+    sub.sort_by(|a, b| a.0.edge_value.cmp(&b.0.edge_value));
+    sub[0].1 = sub[0].1 + (MAX_F64/10.0);
+    sub[len-1].1 = sub[len-1].1 + (MAX_F64/10.0);
+    for i in 1..len-1 {
+        let add_d = ((sub[i+1].0.edge_value - sub[i-1].0.edge_value) as f64)/span_e;
+        sub[i].1 = sub[i].1 + add_d;
+    }
+
+    // Sorting and adding distance values for overall deviation
+    sub.sort_by(|a, b| a.0.overall_dev.cmp(&b.0.overall_dev));
+    sub[0].1 = sub[0].1 + (MAX_F64/10.0);
+    sub[len-1].1 = sub[len-1].1 + (MAX_F64/10.0);
+    for i in 1..len-1 {
+        let add_d = ((sub[i+1].0.overall_dev - sub[i-1].0.overall_dev) as f64)/span_o;
+        sub[i].1 = sub[i].1 + add_d;
+    }
+
+    // Sorting and adding distance values for connectivity
+    sub.sort_by(|a, b| a.0.connectivity.cmp(&b.0.connectivity));
+    sub[0].1 = sub[0].1 + (MAX_F64/10.0);
+    sub[len-1].1 = sub[len-1].1 + (MAX_F64/10.0);
+    for i in 1..len-1 {
+        let add_d = ((sub[i+1].0.connectivity - sub[i-1].0.connectivity) as f64)/span_c;
+        sub[i].1 = sub[i].1 + add_d;
+    }
+
     //  Sort the vector by distance (biggest is best)
-    return subpop
+    sub.sort_by(|a, b| match a.1.partial_cmp(&b.1) {None => Ordering::Equal, Some(eq) => eq,});
+    return sub.into_iter().map(|(g, _)| g).collect()
 }
