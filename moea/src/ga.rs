@@ -14,6 +14,8 @@ use rand::prelude::*;
 use std::cmp::Ordering;
 use std::f64::MAX as MAX_F64;
 use std::i32::MAX as MAX_I32;
+use rayon::prelude::*;
+use rayon::iter::once;
 
 // Directions for representation : 0 = None, 1 = Up, 2 = Right, 3 = Down, 4 = Left
 pub fn train(input_image : &Img) -> Vec<Vec<usize>> {
@@ -23,17 +25,14 @@ pub fn train(input_image : &Img) -> Vec<Vec<usize>> {
     }
     for i in 0..GENERATIONS {
         println!("Gen {}", i+1);
-        let pool = pop.clone();
-        let mut new_pop : HashSet<Genome> = pop.into_iter().collect();
-        while new_pop.len() < 2*POP_SIZE {
-            let p1 = tournament_select(&pool);
-            let p2 = tournament_select(&pool);
-            let c1 = ((&pool[p1]).crossover_order1(input_image, &pool[p2])).mutate(input_image);
-            let c2 = ((&pool[p2]).crossover_order1(input_image, &pool[p1])).mutate(input_image);
-            new_pop.insert(c1);
-            new_pop.insert(c2);
-        }
-        pop = new_pop.into_iter().collect();
+        let new_pop: HashSet<Genome> = (0..POP_SIZE/2).into_par_iter().flat_map(|_| {
+            let p1 = tournament_select(&pop);
+            let p2 = tournament_select(&pop);
+            let c1 = ((&pop[p1]).crossover_order1(input_image, &pop[p2])).mutate(input_image);
+            let c2 = ((&pop[p2]).crossover_order1(input_image, &pop[p1])).mutate(input_image);
+            once(c1).chain(once(c2))
+        }).collect();
+        pop.extend(new_pop.into_iter());
         pop = rank_crowding_sort(pop);
         pop.drain(0..POP_SIZE);
     }

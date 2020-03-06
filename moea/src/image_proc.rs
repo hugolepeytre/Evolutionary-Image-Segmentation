@@ -28,7 +28,7 @@ pub fn output_segmentations(original_image : Img, pfront : Vec<Vec<usize>>, file
             }
             *pixel = image::Rgb([r, g, b]);
         }
-        imgbuf_type1.save(format!("result_img{}_type1_sol{}.jpg", filepath_num, i).as_str()).unwrap();
+        imgbuf_type1.save(format!("{}/result_img{}_type1_sol{}.jpg", filepath_num, filepath_num, i).as_str()).unwrap();
         for (x, y, pixel) in imgbuf_type2.enumerate_pixels_mut() {
             let pos = x as usize + y as usize * original_image.width;
             if original_image.is_on_border(pos, &seg) {
