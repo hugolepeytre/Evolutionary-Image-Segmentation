@@ -1,6 +1,7 @@
 const POP_SIZE : usize = 50;
 const TOURNAMENT_SIZE : usize = 4;
 const GENERATIONS : usize = 100;
+const MIN_SEG_SIZE : usize = 100;
 
 const MUT_PROB : f64 = 0.7;
 const CROSS_PROB : f64 = 1.0;
@@ -80,7 +81,7 @@ impl Genome {
             }
         }
 
-        return Genome::new(Self::get_fitness(img, &rd_edges), rd_edges)
+        return Genome::new(Self::get_fitness(img, &mut rd_edges), rd_edges)
     }
 
     fn mutate(mut self, img : &Img) -> Genome {
@@ -91,7 +92,7 @@ impl Genome {
             let new_val : i32 = rng.gen_range(0, 5);
             self.edges[idx] = new_val;
         }
-        return Self::new(Self::get_fitness(img, &self.edges), self.edges)
+        return Self::new(Self::get_fitness(img, &mut self.edges), self.edges)
     }
 
     fn crossover_uniform(&self, img : &Img, other : &Genome) -> Genome {
@@ -99,8 +100,8 @@ impl Genome {
         let tmp : f64 = rng.gen();
         if tmp < CROSS_PROB {
             let rd_num : Vec<f64> = (0..self.edges.len()).map(|_| rng.gen()).collect();
-            let new_vec : Vec<i32> = rd_num.into_iter().enumerate().map(|(idx, f)| if f < 0.5 {self.edges[idx]} else {other.edges[idx]}).collect();
-            let fitness = Self::get_fitness(img, &new_vec);
+            let mut new_vec : Vec<i32> = rd_num.into_iter().enumerate().map(|(idx, f)| if f < 0.5 {self.edges[idx]} else {other.edges[idx]}).collect();
+            let fitness = Self::get_fitness(img, &mut new_vec);
             return Genome::new(fitness, new_vec)
         }
         return (*self).clone()
@@ -116,13 +117,13 @@ impl Genome {
             for &n in other.edges.iter().take(begin).chain(self.edges.iter().skip(begin).take(length).chain(other.edges.iter().skip(begin + length))) {
                 new_vec.push(n);
             }
-            let fitness = Self::get_fitness(img, &new_vec);
+            let fitness = Self::get_fitness(img, &mut new_vec);
             return Genome::new(fitness, new_vec)
         }
         return (*self).clone()
     }
 
-    fn get_fitness(img : &Img, edges : &Vec<i32>) -> (i32, i32, i32) {
+    fn get_fitness(img : &Img, edges : &mut Vec<i32>) -> (i32, i32, i32) {
         let (seg_nums, centroids) = Self::find_segments(img, edges);
         let (edge_val, connectivity, overall_dev) = Self::get_measures(img, &seg_nums, &centroids);
         // println!("{} segments", centroids.len());
@@ -150,7 +151,32 @@ impl Genome {
             let &v = untreated.iter().next().unwrap();
             let mut next_seg = HashSet::new();
             let mut centr = (0, 0, 0);
-            Self::add_span(v, &mut untreated, &mut next_seg, &adj_list);
+            let mut border = Self::add_span(v, &mut untreated, &mut next_seg, &adj_list).0;
+            while next_seg.len() < MIN_SEG_SIZE {
+                let mut new = 0;
+                for d in 1..=4 {
+                    match img.neighbor(border, d) {
+                        Some(n) => if !next_seg.contains(&n) {new = n},
+                        None => (),
+                    }
+                }
+                if untreated.contains(&new) {
+                    adj_list[border].push(new);
+                    adj_list[new].push(border);
+                    border = Self::add_span(new, &mut untreated, &mut next_seg, &adj_list).0;
+                }
+                else {
+                    let mut seg_num = 0;
+                    for (i, old_seg) in segments.iter().enumerate() {
+                        if old_seg.contains(&new) {
+                            seg_num = i;
+                        }
+                    }
+                    let to_merge = segments.remove(seg_num);
+                    centr = centroid_sums.remove(seg_num);
+                    next_seg.extend(to_merge);
+                }
+            }
             for &a in &next_seg {
                 centr = img.get(a).add_to_centroid_sum(centr);
             }
@@ -173,13 +199,19 @@ impl Genome {
         return (seg_num, centroids)
     }
 
-    fn add_span(v : usize, untreated : &mut HashSet<usize>, treated : &mut HashSet<usize>, adj_list : &Vec<Vec<usize>>) {
-        if treated.contains(&v) {return}
+    fn add_span(v : usize, untreated : &mut HashSet<usize>, treated : &mut HashSet<usize>, adj_list : &Vec<Vec<usize>>) -> (usize, usize) {
+        if treated.contains(&v) {return (v, adj_list[v].len())}
         untreated.remove(&v);
         treated.insert(v);
+        let (mut vert, mut least_n) = (v, adj_list[v].len());
         for &down_v in &adj_list[v] {
-            Self::add_span(down_v, untreated, treated, adj_list);
+            let tmp = Self::add_span(down_v, untreated, treated, adj_list);
+            if tmp.1 < least_n {
+                least_n = tmp.1;
+                vert = tmp.0;
+            }
         }
+        return (vert, least_n)
     }
 
     fn get_measures(img : &Img, seg_nums : &Vec<usize>, centroids : &Vec<Pix>) -> (f64, f64, f64) {
