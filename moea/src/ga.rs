@@ -3,7 +3,7 @@ const TOURNAMENT_SIZE : usize = 4;
 const GENERATIONS : usize = 100;
 const MIN_SEG_SIZE : usize = 100;
 
-const MUT_PROB : f64 = 0.7;
+const MUT_PROB : f64 = 0.01;
 const CROSS_PROB : f64 = 1.0;
 
 use crate::image_proc::Img;
@@ -34,7 +34,7 @@ pub fn train(input_image : &Img) -> Vec<Vec<usize>> {
         }).collect();
         pop.extend(new_pop.into_iter());
         pop = rank_crowding_sort(pop);
-        pop.drain(0..POP_SIZE);
+        pop = pop.drain((pop.len()-POP_SIZE)..).collect();
     }
     let bests = get_pareto_front(pop);
     let segs : Vec<Vec<usize>> = bests.into_iter().map(|g| Genome::find_segments(input_image, &g.edges).0).collect();
@@ -85,12 +85,8 @@ impl Genome {
 
     fn mutate(mut self, img : &Img) -> Genome {
         let mut rng = thread_rng();
-        let tmp : f64 = rng.gen();
-        if tmp < MUT_PROB {
-            let idx : usize = rng.gen_range(0, self.edges.len());
-            let new_val : i32 = rng.gen_range(0, 5);
-            self.edges[idx] = new_val;
-        }
+        let rd_num : Vec<f64> = (0..self.edges.len()).map(|_| rng.gen()).collect();
+        self.edges = rd_num.into_iter().zip(self.edges).map(|(r, ed)| if r < MUT_PROB {rng.gen_range(0, 5)} else {ed} ).collect();
         return Self::new(Self::get_fitness(img, &mut self.edges), self.edges)
     }
 
@@ -150,7 +146,14 @@ impl Genome {
             let &v = untreated.iter().next().unwrap();
             let mut next_seg = HashSet::new();
             let mut centr = (0, 0, 0);
-            let mut border = Self::add_span(v, &mut untreated, &mut next_seg, &adj_list).0;
+            let res = Self::add_span(v, &mut untreated, &mut next_seg, &adj_list);
+            let mut border = res.0;
+            if res.1 >= 4 {
+                println!("Gros rip");
+                for &tmp in &adj_list[res.0] {
+                    println!("{} is a neighbor of {}", res.0, tmp);
+                }
+            }
             while next_seg.len() < MIN_SEG_SIZE {
                 let mut new = 0;
                 for d in 1..=4 {

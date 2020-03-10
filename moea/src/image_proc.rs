@@ -40,7 +40,7 @@ pub fn output_segmentations(original_image : Img, pfront : Vec<Vec<usize>>, file
                 *pixel = image::Rgb([max, max, max]);
             }
         }
-        imgbuf_type2.save(format!("result_img{}_type2_sol{}.jpg", filepath_num, i).as_str()).unwrap();
+        imgbuf_type2.save(format!("{}/result_img{}_type2_sol{}.jpg", filepath_num, filepath_num, i).as_str()).unwrap();
     }
 }
 
