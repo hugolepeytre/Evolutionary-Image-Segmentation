@@ -1,12 +1,13 @@
 const POP_SIZE : usize = 50;
 const TOURNAMENT_SIZE : usize = 4;
-const GENERATIONS : usize = 100;
+const GENERATIONS : usize = 200;
 const _MIN_SEG_SIZE : usize = 5;
 const FINAL_SAMPLE : usize = 20;
 const MAX_SEG_NUM : i32 = 50;
 const INIT_SEGS_SQRT : i32 = 7;
+const MAX_SPREAD_SIZE : i32 = 50;
 
-const MUT_PROB : f64 = 0.0005;
+const MUT_PROB : f64 = 0.01;
 const CROSS_PROB : f64 = 1.0;
 
 use crate::image_proc::Img;
@@ -33,8 +34,8 @@ pub fn train(input_image : &Img) -> Vec<Vec<usize>> {
         let new_pop: HashSet<Genome> = (0..POP_SIZE/2).into_par_iter().flat_map(|_| {
             let p1 = tournament_select(&pop);
             let p2 = tournament_select(&pop);
-            let c1 = (&pop[p1]).crossover(input_image, &pop[p2]).mutate(input_image);
-            let c2 = (&pop[p2]).crossover(input_image, &pop[p1]).mutate(input_image);
+            let c1 = (&pop[p1]).cross_mut(input_image, &pop[p2]);
+            let c2 = (&pop[p2]).cross_mut(input_image, &pop[p1]);
             once(c1).chain(once(c2))
         }).collect();
         pop.extend(new_pop.into_iter());
@@ -73,12 +74,13 @@ impl Genome {
     }
 
     fn random(img : &Img) -> Genome {
-        let mut rd_segm : Vec<usize> = vec![0; img.length()]; 
         let mut rng = thread_rng();
         let num_segs : usize = rng.gen_range(1, INIT_SEGS_SQRT + 1) as usize;
+        println!("{} num", num_segs);//debug
+        let mut rd_segm : Vec<usize> = vec![num_segs*num_segs; img.length()]; 
         let width = img.width() / num_segs;
         let height = img.height() / num_segs;
-        for i in 1..=num_segs*num_segs {
+        for i in 0..num_segs*num_segs {
             let x = (i % num_segs) * width;
             let y = (i / num_segs) * height;
             for y2 in 0..height {
@@ -90,17 +92,13 @@ impl Genome {
                 }
             }
         }
+        let num_segs = num_segs*num_segs + 1;
         let adj_list = Self::make_adj_list(&rd_segm, img);
         return Genome::new(Self::get_fitness(img, &mut rd_segm, num_segs as i32), rd_segm, adj_list)
     }
 
-    fn _cross_mutate(&self, _img : &Img, _other : &Genome) -> Genome {
-        // TODO
-        return Self::new((0, 0, 0, 0), Vec::new(), Vec::new())
-    }
-
     // Each pixel can mutate. If it does, it goes to a random neighbor segment (need to work on a copy)
-    fn mutate(self, img : &Img) -> Genome {
+    fn _mutate(self, img : &Img) -> Genome {
         let mut rng = thread_rng();
         let rd_num : Vec<f64> = (0..img.length()).map(|_| rng.gen()).collect();
         let new_segmentation = rd_num.into_iter().enumerate().map(|(i, rd)| {
@@ -116,11 +114,11 @@ impl Genome {
             }
         }).collect();
         let adj_list = Self::make_adj_list(&new_segmentation, img);
-        let new_segmentation = Self::renumber(&adj_list);
-        return Self::new(Self::get_fitness(img, &new_segmentation, self.num_segs), new_segmentation, adj_list)
+        let (new_segmentation, num_segs) = Self::renumber(&adj_list);
+        return Self::new(Self::get_fitness(img, &new_segmentation, num_segs as i32), new_segmentation, adj_list)
     }
 
-    fn renumber(adj_list : &Vec<Vec<usize>>) -> Vec<usize> {
+    fn renumber(adj_list : &Vec<Vec<usize>>) -> (Vec<usize>, usize) {
         let mut segmentation = vec![0; adj_list.len()];
         let mut untreated : HashSet<usize> = (0..adj_list.len()).collect();
         let mut curr_segment = 0;
@@ -129,20 +127,80 @@ impl Genome {
             Self::renumber_rec(next, curr_segment, adj_list, &mut untreated, &mut segmentation);
             curr_segment = curr_segment + 1;
         }
-        return segmentation
+        return (segmentation, curr_segment)
     }
 
     fn renumber_rec(next : usize, curr_segment : usize, adj_list : &Vec<Vec<usize>>, untreated : &mut HashSet<usize>, segmentation : &mut Vec<usize>) {
-        if !untreated.contains(&next) { return }
-        segmentation[next] = curr_segment;
-        for &neigh in &adj_list[next] {
-            Self::renumber_rec(neigh, curr_segment, adj_list, untreated, segmentation);
+        let mut stack = Vec::new();
+        stack.push(next);
+        while !stack.is_empty() {
+            let next = stack.pop().unwrap();
+            segmentation[next] = curr_segment;
+            untreated.remove(&next);
+            for &neigh in &adj_list[next] {
+                if untreated.contains(&neigh) {
+                    stack.push(neigh);
+                }
+            }
         }
-        untreated.remove(&next);
+    }
+
+    fn cross_mut(&self, img : &Img, other : &Genome) -> Genome {
+        let mut rng = thread_rng();
+        let tmp : f64 = rng.gen();
+        let mut new_segmentation = vec![0; img.length()];
+        // Crossover
+        if tmp < CROSS_PROB {
+            let mut untreated : HashSet<usize> = (0..img.length()).collect();
+            let mut num_parent = 0;
+            let mut curr_segment = 0;
+            while !untreated.is_empty() {
+                let next = *untreated.iter().next().unwrap();
+                let used_adj = if num_parent == 0 { &self.adj_list } else { &other.adj_list };
+                Self::renumber_rec(next, curr_segment, used_adj, &mut untreated, &mut new_segmentation);
+                num_parent = 1 - num_parent;
+                curr_segment = curr_segment + 1;
+            }
+        }
+        else {
+            new_segmentation = self.segmentation.clone();
+        }
+        // Mutate
+        let rd_num : Vec<f64> = (0..img.length()).map(|_| rng.gen()).collect();
+        for i in 0..new_segmentation.len() {
+            if rd_num[i] < MUT_PROB {
+                let neigh = rng.gen_range(1, 5);
+                match img.neighbor(i, neigh) {
+                    Some(n) => {
+                        // if n's segment is different from i's, bomb
+                        let s = new_segmentation[n];
+                        if s != new_segmentation[i] {
+                            let spread_size = rng.gen_range(1, MAX_SPREAD_SIZE);
+                            Self::spread_flip(i, s, &mut new_segmentation, spread_size, img);
+                        }
+                    },
+                    None => (),
+                }
+            }
+        }
+        // Make Genome
+        let adj_list = Self::make_adj_list(&new_segmentation, img);
+        let (new_segmentation, num_segs) = Self::renumber(&adj_list);
+        return Self::new(Self::get_fitness(img, &new_segmentation, num_segs as i32), new_segmentation, adj_list)
+    }
+
+    fn spread_flip(current : usize, new_seg : usize, segmentation : &mut Vec<usize>, spread_size : i32, img : &Img) {
+        if spread_size == 0 || segmentation[current] == new_seg { return }
+        segmentation[current] = new_seg;
+        for d in 1..=4 {
+            if let Some(n) = img.neighbor(current, d) {
+                Self::spread_flip(n, new_seg, segmentation, spread_size - 1, img);
+            }
+        }
     }
 
     // While selecting each parent alternatively, copy one of its segments containing a not yet assigned pixel into the child
-    fn crossover(&self, img : &Img, other : &Genome) -> Genome {
+    fn _crossover(&self, img : &Img, other : &Genome) -> Genome {
         let mut rng = thread_rng();
         let tmp : f64 = rng.gen();
         if tmp < CROSS_PROB {
@@ -157,6 +215,9 @@ impl Genome {
                 num_parent = 1 - num_parent;
                 curr_segment = curr_segment + 1;
             }
+            let adj_list = Self::make_adj_list(&new_segmentation, img);
+            let (new_segmentation, num_segs) = Self::renumber(&adj_list);
+            return Self::new(Self::get_fitness(img, &new_segmentation, num_segs as i32), new_segmentation, adj_list)
         }
         return (*self).clone()
     }
@@ -174,7 +235,12 @@ impl Genome {
             sums[seg] = img.get(i).add_to_centroid_sum(sums[seg]);
         }
         for ((r, g, b), elems) in sums {
-            centroids.push(Pix::new((r/elems) as u8, (g/elems) as u8, (b/elems) as u8));
+            if elems == 0 {
+                centroids.push(Pix::new(0, 0, 0));
+            }
+            else {
+                centroids.push(Pix::new((r/elems) as u8, (g/elems) as u8, (b/elems) as u8));
+            }
         }
         return centroids
     }
@@ -186,7 +252,7 @@ impl Genome {
             let p_pix = img.get(p);
             let seg = seg_nums[p];
             overall_dev = overall_dev + centroids[seg].dist(img.get(p));
-            for d in 1..=8 {
+            for d in 1..=4 {
                 match img.neighbor(p, d) {
                     Some(n) => {
                         if seg_nums[n]!=seg {
@@ -202,11 +268,11 @@ impl Genome {
 
     fn make_adj_list(segmentation : &Vec<usize>, img : &Img) -> Vec<Vec<usize>> {
         let mut adj_list : Vec<Vec<usize>> = vec![Vec::new(); img.length()];
-        for &n in segmentation {
+        for (i, &n) in segmentation.iter().enumerate() {
             for d in 1..=4 {
-                if let Some(neigh) = img.neighbor(n, d) {
-                    if segmentation[n] == segmentation[neigh] {
-                        adj_list[n].push(neigh);
+                if let Some(neigh) = img.neighbor(i, d) {
+                    if n == segmentation[neigh] {
+                        adj_list[i].push(neigh);
                     }
                 }
             }
@@ -344,5 +410,5 @@ fn sort_by_crowding(subpop : Vec<Genome>) -> Vec<Genome> {
 
     //  Sort the vector by distance (biggest is best)
     sub.sort_by(|a, b| match a.1.partial_cmp(&b.1) {None => Ordering::Equal, Some(eq) => eq,});
-    return sub.into_iter().map(|(g, _)| g).collect()
+    return sub.into_iter().map(|(g, _)| g).rev().collect()
 }

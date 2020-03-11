@@ -1,5 +1,3 @@
-
-
 Questions :
 Uniform crossover seems terrible and makes too many segments ?
 Pareto front is way too large, most solutions are incomparable
