@@ -78,25 +78,6 @@ impl Img {
         return self.height
     }
 
-    pub fn dist_to_adj(&self, curr_v : usize, dir : i32) -> Option<(usize, f64)> {
-        let p2 = match self.neighbor(curr_v, dir) {
-            None => return None,
-            Some(o) => o,
-        };
-        return Some((p2, self.euclid_dist(curr_v, p2)))
-    }
-
-    pub fn get_opp_dir(dir : i32) -> i32 {
-        return match dir {
-            0 => 0,
-            1 => 3,
-            2 => 4,
-            3 => 1,
-            4 => 2,
-            _ => {println!("Shouldn't happen"); return 0},
-        }
-    }
-
     fn is_in_bounds(&self, p : i32) -> bool {
         return 0 <= p && p < self.signed_length
     }
@@ -125,10 +106,6 @@ impl Img {
         let next = if ib {Some(tmp_next as usize)} else {None};
         return next
         
-    }
-
-    fn euclid_dist(&self, p1 : usize, p2 : usize) -> f64 {
-        return self.pixels[p1].dist(&self.pixels[p2])
     }
 
     pub fn get(&self, idx : usize) -> &Pix {
