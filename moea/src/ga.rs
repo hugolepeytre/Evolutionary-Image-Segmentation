@@ -1,10 +1,11 @@
-const POP_SIZE : usize = 10;
+const POP_SIZE : usize = 50;
 const TOURNAMENT_SIZE : usize = 4;
 const GENERATIONS : usize = 100;
 const _MIN_SEG_SIZE : usize = 5;
 const FINAL_SAMPLE : usize = 10;
+const MAX_SEG_NUM : usize = 100;
 
-const MUT_PROB : f64 = 0.0;
+const MUT_PROB : f64 = 0.00001;
 const CROSS_PROB : f64 = 1.0;
 
 use crate::image_proc::Img;
@@ -62,11 +63,12 @@ struct Genome {
     connectivity : i32,
     overall_dev : i32,
     edges : Vec<i32>,
+    num_segs : usize,
 }
 
 impl Genome {
-    fn new(measures : (i32, i32, i32), edges : Vec<i32>) -> Genome {
-        return Genome {edge_value : measures.0, connectivity : measures.1, overall_dev : measures.2, edges};
+    fn new(measures : (i32, i32, i32, usize), edges : Vec<i32>) -> Genome {
+        return Genome {edge_value : measures.0, connectivity : measures.1, overall_dev : measures.2, edges, num_segs : measures.3};
     }
 
     fn random(img : &Img) -> Genome {
@@ -148,11 +150,11 @@ impl Genome {
         return (*self).clone()
     }
 
-    fn get_fitness(img : &Img, edges : &mut Vec<i32>) -> (i32, i32, i32) {
+    fn get_fitness(img : &Img, edges : &mut Vec<i32>) -> (i32, i32, i32, usize) {
         let (seg_nums, centroids) = Self::find_segments(img, edges);
         let (edge_val, connectivity, overall_dev) = Self::get_measures(img, &seg_nums, &centroids);
         // println!("{} segments", centroids.len());
-        return (edge_val as i32, connectivity as i32, overall_dev as i32)
+        return (edge_val as i32, connectivity as i32, overall_dev as i32, centroids.len())
     }
 
     fn find_segments(img : &Img, edges : &Vec<i32>) -> (Vec<usize>, Vec<Pix>) {
@@ -270,19 +272,36 @@ impl Genome {
     }
 
     fn dominated_by(&self, other : &Genome) -> bool {
-        let mut at_least = true;
-        let mut better = false;
-        if other.edge_value > self.edge_value 
-            || other.connectivity < self.connectivity 
-            || other.overall_dev < self.overall_dev {
-            better = true;
+        let c1  = self.satisfies_constraints();
+        let c2  = other.satisfies_constraints();
+        if c1 && !c2 {
+            return false
         }
-        if other.edge_value < self.edge_value 
-            || other.connectivity > self.connectivity 
-            || other.overall_dev > self.overall_dev {
-            at_least = false;
+        else if c2 && !c1 {
+            return true
         }
-        return at_least && better
+        else if !c1 {
+            return other.num_segs < self.num_segs
+        }
+        else {
+            let mut at_least = true;
+            let mut better = false;
+            if other.edge_value > self.edge_value 
+                || other.connectivity < self.connectivity 
+                || other.overall_dev < self.overall_dev {
+                better = true;
+            }
+            if other.edge_value < self.edge_value 
+                || other.connectivity > self.connectivity 
+                || other.overall_dev > self.overall_dev {
+                at_least = false;
+            }
+            return at_least && better
+        }
+    }
+
+    fn satisfies_constraints(&self) -> bool {
+        return self.num_segs < MAX_SEG_NUM
     }
 }
 
