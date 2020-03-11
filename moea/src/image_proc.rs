@@ -70,6 +70,14 @@ impl Img {
         return self.length
     }
 
+    pub fn width(&self) -> usize {
+        return self.width
+    }
+
+    pub fn height(&self) -> usize {
+        return self.height
+    }
+
     pub fn dist_to_adj(&self, curr_v : usize, dir : i32) -> Option<(usize, f64)> {
         let p2 = match self.neighbor(curr_v, dir) {
             None => return None,
@@ -157,7 +165,7 @@ impl Pix {
         return if c1 > c2 {(c1-c2) as f64} else {(c2-c1) as f64};
     }
 
-    pub fn add_to_centroid_sum(&self, acc : (u32, u32, u32)) -> (u32, u32, u32) {
-        return (acc.0 + self.r as u32, acc.1 + self.g as u32, acc.2 + self.b as u32)
+    pub fn add_to_centroid_sum(&self, acc : ((u32, u32, u32), u32)) -> ((u32, u32, u32), u32) {
+        return (((acc.0).0 + self.r as u32, (acc.0).1 + self.g as u32, (acc.0).2 + self.b as u32), acc.1 + 1)
     }
 }
