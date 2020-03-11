@@ -2,10 +2,10 @@ const POP_SIZE : usize = 50;
 const TOURNAMENT_SIZE : usize = 4;
 const GENERATIONS : usize = 100;
 const _MIN_SEG_SIZE : usize = 5;
-const FINAL_SAMPLE : usize = 10;
-const MAX_SEG_NUM : usize = 100;
+const FINAL_SAMPLE : usize = 20;
+const MAX_SEG_NUM : i32 = 100;
 
-const MUT_PROB : f64 = 0.00001;
+const MUT_PROB : f64 = 0.0005;
 const CROSS_PROB : f64 = 1.0;
 
 use crate::image_proc::Img;
@@ -59,16 +59,16 @@ pub fn train(input_image : &Img) -> Vec<Vec<usize>> {
 #[derive(Eq)]
 #[derive(Clone)]
 struct Genome {
-    edge_value : i32,
-    connectivity : i32,
-    overall_dev : i32,
+    avg_edge_value : i32,
+    avg_overall_dev : i32,
+    avg_seg_size : i32,
     edges : Vec<i32>,
-    num_segs : usize,
+    num_segs : i32,
 }
 
 impl Genome {
-    fn new(measures : (i32, i32, i32, usize), edges : Vec<i32>) -> Genome {
-        return Genome {edge_value : measures.0, connectivity : measures.1, overall_dev : measures.2, edges, num_segs : measures.3};
+    fn new(measures : (i32, i32, i32, i32), edges : Vec<i32>) -> Genome {
+        return Genome {avg_edge_value : measures.0, avg_overall_dev : measures.1, avg_seg_size : measures.2, edges, num_segs : measures.3};
     }
 
     fn random(img : &Img) -> Genome {
@@ -150,11 +150,12 @@ impl Genome {
         return (*self).clone()
     }
 
-    fn get_fitness(img : &Img, edges : &mut Vec<i32>) -> (i32, i32, i32, usize) {
+    fn get_fitness(img : &Img, edges : &mut Vec<i32>) -> (i32, i32, i32, i32) {
         let (seg_nums, centroids) = Self::find_segments(img, edges);
-        let (edge_val, connectivity, overall_dev) = Self::get_measures(img, &seg_nums, &centroids);
+        let num_segs = centroids.len() as i32;
+        let (edge_val, overall_dev) = Self::get_measures(img, &seg_nums, &centroids);
         // println!("{} segments", centroids.len());
-        return (edge_val as i32, connectivity as i32, overall_dev as i32, centroids.len())
+        return (edge_val as i32/num_segs, overall_dev as i32/num_segs, (edges.len()/centroids.len()) as i32, num_segs)
     }
 
     fn find_segments(img : &Img, edges : &Vec<i32>) -> (Vec<usize>, Vec<Pix>) {
@@ -248,9 +249,8 @@ impl Genome {
         return (vert, least_n)
     }
 
-    fn get_measures(img : &Img, seg_nums : &Vec<usize>, centroids : &Vec<Pix>) -> (f64, f64, f64) {
+    fn get_measures(img : &Img, seg_nums : &Vec<usize>, centroids : &Vec<Pix>) -> (f64, f64) {
         let mut edge_val = 0.0;
-        let mut connectivity = 0.0;
         let mut overall_dev = 0.0;
         for p in 0..img.length() {
             let p_pix = img.get(p);
@@ -261,14 +261,13 @@ impl Genome {
                     Some(n) => {
                         if seg_nums[n]!=seg {
                             edge_val = edge_val + p_pix.dist(img.get(n));
-                            connectivity = connectivity + 0.125;
                         }
                     },
                     None => (),
                 }
             }
         }
-        return (edge_val, connectivity, overall_dev)
+        return (edge_val, overall_dev)
     }
 
     fn dominated_by(&self, other : &Genome) -> bool {
@@ -286,14 +285,14 @@ impl Genome {
         else {
             let mut at_least = true;
             let mut better = false;
-            if other.edge_value > self.edge_value 
-                || other.connectivity < self.connectivity 
-                || other.overall_dev < self.overall_dev {
+            if other.avg_edge_value > self.avg_edge_value 
+                || other.avg_seg_size > self.avg_seg_size 
+                || other.avg_overall_dev < self.avg_overall_dev {
                 better = true;
             }
-            if other.edge_value < self.edge_value 
-                || other.connectivity > self.connectivity 
-                || other.overall_dev > self.overall_dev {
+            if other.avg_edge_value < self.avg_edge_value 
+                || other.avg_seg_size < self.avg_seg_size 
+                || other.avg_overall_dev > self.avg_overall_dev {
                 at_least = false;
             }
             return at_least && better
@@ -357,12 +356,12 @@ fn sort_by_crowding(subpop : Vec<Genome>) -> Vec<Genome> {
     // Finding span for the 3 measures
     let (min_e, max_e, min_o, max_o, min_c, max_c) = subpop.iter().fold((0, MAX_I32, 0, MAX_I32, 0, MAX_I32),  
             |(mut min_e, mut max_e, mut min_o, mut max_o, mut min_c, mut max_c), g| {
-                if g.edge_value > max_e {max_e = g.edge_value;}
-                if g.edge_value < min_e {min_e = g.edge_value;}
-                if g.overall_dev > max_o {max_o = g.overall_dev;}
-                if g.overall_dev < min_o {min_o = g.overall_dev;}
-                if g.connectivity > max_c {max_c = g.connectivity;}
-                if g.connectivity < min_c {min_c = g.connectivity;}
+                if g.avg_edge_value > max_e {max_e = g.avg_edge_value;}
+                if g.avg_edge_value < min_e {min_e = g.avg_edge_value;}
+                if g.avg_overall_dev > max_o {max_o = g.avg_overall_dev;}
+                if g.avg_overall_dev < min_o {min_o = g.avg_overall_dev;}
+                if g.avg_seg_size > max_c {max_c = g.avg_seg_size;}
+                if g.avg_seg_size < min_c {min_c = g.avg_seg_size;}
                 (min_e, max_e, min_o, max_o, min_c, max_c)
             });
     let (span_e, span_o, span_c) = ((max_e - min_e) as f64, (max_o - min_o) as f64, (max_c - min_c) as f64);
@@ -373,29 +372,29 @@ fn sort_by_crowding(subpop : Vec<Genome>) -> Vec<Genome> {
     let len = sub.len();
 
     // Sorting and adding distance values for edge value
-    sub.sort_by(|a, b| a.0.edge_value.cmp(&b.0.edge_value));
+    sub.sort_by(|a, b| a.0.avg_edge_value.cmp(&b.0.avg_edge_value));
     sub[0].1 = sub[0].1 + (MAX_F64/10.0);
     sub[len-1].1 = sub[len-1].1 + (MAX_F64/10.0);
     for i in 1..len-1 {
-        let add_d = ((sub[i+1].0.edge_value - sub[i-1].0.edge_value) as f64)/span_e;
+        let add_d = ((sub[i+1].0.avg_edge_value - sub[i-1].0.avg_edge_value) as f64)/span_e;
         sub[i].1 = sub[i].1 + add_d;
     }
 
     // Sorting and adding distance values for overall deviation
-    sub.sort_by(|a, b| a.0.overall_dev.cmp(&b.0.overall_dev));
+    sub.sort_by(|a, b| a.0.avg_overall_dev.cmp(&b.0.avg_overall_dev));
     sub[0].1 = sub[0].1 + (MAX_F64/10.0);
     sub[len-1].1 = sub[len-1].1 + (MAX_F64/10.0);
     for i in 1..len-1 {
-        let add_d = ((sub[i+1].0.overall_dev - sub[i-1].0.overall_dev) as f64)/span_o;
+        let add_d = ((sub[i+1].0.avg_overall_dev - sub[i-1].0.avg_overall_dev) as f64)/span_o;
         sub[i].1 = sub[i].1 + add_d;
     }
 
     // Sorting and adding distance values for connectivity
-    sub.sort_by(|a, b| a.0.connectivity.cmp(&b.0.connectivity));
+    sub.sort_by(|a, b| a.0.avg_seg_size.cmp(&b.0.avg_seg_size));
     sub[0].1 = sub[0].1 + (MAX_F64/10.0);
     sub[len-1].1 = sub[len-1].1 + (MAX_F64/10.0);
     for i in 1..len-1 {
-        let add_d = ((sub[i+1].0.connectivity - sub[i-1].0.connectivity) as f64)/span_c;
+        let add_d = ((sub[i+1].0.avg_seg_size - sub[i-1].0.avg_seg_size) as f64)/span_c;
         sub[i].1 = sub[i].1 + add_d;
     }
 
