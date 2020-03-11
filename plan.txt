@@ -2,4 +2,4 @@
 
 Questions :
 Uniform crossover seems terrible and makes too many segments ?
-Determining rank has 2 conflicting definitions, in slide 74 and 67
+Pareto front is way too large, most solutions are incomparable

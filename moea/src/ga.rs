@@ -1,9 +1,10 @@
-const POP_SIZE : usize = 50;
+const POP_SIZE : usize = 10;
 const TOURNAMENT_SIZE : usize = 4;
 const GENERATIONS : usize = 100;
-const MIN_SEG_SIZE : usize = 100;
+const _MIN_SEG_SIZE : usize = 5;
+const FINAL_SAMPLE : usize = 10;
 
-const MUT_PROB : f64 = 0.01;
+const MUT_PROB : f64 = 0.0;
 const CROSS_PROB : f64 = 1.0;
 
 use crate::image_proc::Img;
@@ -16,9 +17,12 @@ use std::f64::MAX as MAX_F64;
 use std::i32::MAX as MAX_I32;
 use rayon::prelude::*;
 use rayon::iter::once;
+use std::time::SystemTime;
 
 // Directions for representation : 0 = None, 1 = Up, 2 = Right, 3 = Down, 4 = Left
 pub fn train(input_image : &Img) -> Vec<Vec<usize>> {
+    let beg = SystemTime::now();
+    let mut now = SystemTime::now();
     let mut pop : Vec<Genome> = Vec::new();
     while pop.len() < POP_SIZE {
         pop.push(Genome::random(input_image));
@@ -28,17 +32,24 @@ pub fn train(input_image : &Img) -> Vec<Vec<usize>> {
         let new_pop: HashSet<Genome> = (0..POP_SIZE/2).into_par_iter().flat_map(|_| {
             let p1 = tournament_select(&pop);
             let p2 = tournament_select(&pop);
-            let c1 = ((&pop[p1]).crossover_order1(input_image, &pop[p2])).mutate(input_image);
-            let c2 = ((&pop[p2]).crossover_order1(input_image, &pop[p1])).mutate(input_image);
+            let c1 = (&pop[p1]).cross_mutate(input_image, &pop[p2]);
+            let c2 = (&pop[p2]).cross_mutate(input_image, &pop[p1]);
             once(c1).chain(once(c2))
         }).collect();
         pop.extend(new_pop.into_iter());
         pop = rank_crowding_sort(pop);
         pop = pop.drain((pop.len()-POP_SIZE)..).collect();
+        if let Ok(dur) = now.elapsed() {
+            println!("{}m{}s", dur.as_secs()/60, dur.as_secs()%60);
+            now = SystemTime::now();
+        }
     }
     let bests = get_pareto_front(pop);
-    let segs : Vec<Vec<usize>> = bests.into_iter().map(|g| Genome::find_segments(input_image, &g.edges).0).collect();
-    return segs;
+    let mut segs : Vec<Vec<usize>> = bests.into_iter().map(|g| Genome::find_segments(input_image, &g.edges).0).collect();
+    if let Ok(dur) = beg.elapsed() {
+        println!("{}m{}s", dur.as_secs()/60, dur.as_secs()%60);
+    }
+    return segs.drain(0..FINAL_SAMPLE).collect();
 }
 
 
@@ -83,14 +94,33 @@ impl Genome {
         return Genome::new(Self::get_fitness(img, &mut rd_edges), rd_edges)
     }
 
-    fn mutate(mut self, img : &Img) -> Genome {
+    fn cross_mutate(&self, img : &Img, other : &Genome) -> Genome {
+        let mut rng = thread_rng();
+        let tmp : f64 = rng.gen();
+        let mut new_edges : Vec<i32> = Vec::new();
+        if tmp < CROSS_PROB {
+            let begin = rng.gen_range(0, self.edges.len());
+            let length = rng.gen_range(0, self.edges.len() - begin);
+            for &n in other.edges.iter().take(begin).chain(self.edges.iter().skip(begin).take(length).chain(other.edges.iter().skip(begin + length))) {
+                new_edges.push(n);
+            }
+        }
+        else {
+            new_edges = self.edges.clone();
+        }
+        let rd_num : Vec<f64> = (0..self.edges.len()).map(|_| rng.gen()).collect();
+        new_edges = rd_num.into_iter().zip(new_edges).map(|(r, ed)| if r < MUT_PROB {rng.gen_range(0, 5)} else {ed} ).collect();
+        return Self::new(Self::get_fitness(img, &mut new_edges), new_edges)
+    }
+
+    fn _mutate(mut self, img : &Img) -> Genome {
         let mut rng = thread_rng();
         let rd_num : Vec<f64> = (0..self.edges.len()).map(|_| rng.gen()).collect();
         self.edges = rd_num.into_iter().zip(self.edges).map(|(r, ed)| if r < MUT_PROB {rng.gen_range(0, 5)} else {ed} ).collect();
         return Self::new(Self::get_fitness(img, &mut self.edges), self.edges)
     }
 
-    fn crossover_uniform(&self, img : &Img, other : &Genome) -> Genome {
+    fn _crossover_uniform(&self, img : &Img, other : &Genome) -> Genome {
         let mut rng = thread_rng();
         let tmp : f64 = rng.gen();
         if tmp < CROSS_PROB {
@@ -102,7 +132,7 @@ impl Genome {
         return (*self).clone()
     }
 
-    fn crossover_order1(&self, img : &Img, other : &Genome) -> Genome {
+    fn _crossover_order1(&self, img : &Img, other : &Genome) -> Genome {
         let mut rng = thread_rng();
         let tmp : f64 = rng.gen();
         if tmp < CROSS_PROB {
@@ -146,39 +176,39 @@ impl Genome {
             let &v = untreated.iter().next().unwrap();
             let mut next_seg = HashSet::new();
             let mut centr = (0, 0, 0);
-            let res = Self::add_span(v, &mut untreated, &mut next_seg, &adj_list);
-            let mut border = res.0;
-            if res.1 >= 4 {
-                println!("Gros rip");
-                for &tmp in &adj_list[res.0] {
-                    println!("{} is a neighbor of {}", res.0, tmp);
-                }
-            }
-            while next_seg.len() < MIN_SEG_SIZE {
-                let mut new = 0;
-                for d in 1..=4 {
-                    match img.neighbor(border, d) {
-                        Some(n) => if !next_seg.contains(&n) {new = n},
-                        None => (),
-                    }
-                }
-                if untreated.contains(&new) {
-                    adj_list[border].push(new);
-                    adj_list[new].push(border);
-                    border = Self::add_span(new, &mut untreated, &mut next_seg, &adj_list).0;
-                }
-                else {
-                    let mut seg_num = 0;
-                    for (i, old_seg) in segments.iter().enumerate() {
-                        if old_seg.contains(&new) {
-                            seg_num = i;
-                        }
-                    }
-                    let to_merge = segments.remove(seg_num);
-                    centr = centroid_sums.remove(seg_num);
-                    next_seg.extend(to_merge);
-                }
-            }
+            Self::add_span(v, &mut untreated, &mut next_seg, &adj_list); // let res = 
+            // let mut border = res.0;
+            // let mut over = false;
+            // while next_seg.len() < MIN_SEG_SIZE && !over {
+            //     let mut new = 0;
+            //     for d in 1..=4 {
+            //         match img.neighbor(border, d) {
+            //             Some(n) => if !next_seg.contains(&n) {new = n},
+            //             None => (),
+            //         }
+            //     }
+            //     if untreated.contains(&new) {
+            //         adj_list[border].push(new);
+            //         adj_list[new].push(border);
+            //         border = Self::add_span(new, &mut untreated, &mut next_seg, &adj_list).0;
+            //     }
+            //     else {
+            //         let mut seg_num = 0;
+            //         for (i, old_seg) in segments.iter().enumerate() {
+            //             if old_seg.contains(&new) {
+            //                 seg_num = i;
+            //             }
+            //         }
+            //         if seg_num >= segments.len() {
+            //             over = true;
+            //         }
+            //         else {
+            //             let to_merge = segments.remove(seg_num);
+            //             centr = centroid_sums.remove(seg_num);
+            //             next_seg.extend(to_merge);
+            //         }
+            //     }
+            // }
             for &a in &next_seg {
                 centr = img.get(a).add_to_centroid_sum(centr);
             }
