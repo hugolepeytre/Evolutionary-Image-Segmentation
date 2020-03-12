@@ -7,6 +7,9 @@ const MAX_SEG_NUM : i32 = 50;
 const INIT_SEGS_SQRT : i32 = 7;
 const MAX_SPREAD_SIZE : i32 = 50;
 
+const MIN_RG_SEG_SIZE : usize = 200;
+const MAX_RG_SEG_SIZE : usize = 300;
+
 const MUT_PROB : f64 = 0.01;
 const CROSS_PROB : f64 = 1.0;
 
@@ -28,6 +31,7 @@ pub fn train(input_image : &Img) -> Vec<Vec<usize>> {
     let mut pop : Vec<Genome> = Vec::new();
     while pop.len() < POP_SIZE {
         pop.push(Genome::random(input_image));
+        pop.push(Genome::random2(input_image));
     }
     for i in 0..GENERATIONS {
         println!("Gen {}", i+1);
@@ -75,8 +79,7 @@ impl Genome {
 
     fn random(img : &Img) -> Genome {
         let mut rng = thread_rng();
-        let num_segs : usize = rng.gen_range(1, INIT_SEGS_SQRT + 1) as usize;
-        println!("{} num", num_segs);//debug
+        let num_segs : usize = rng.gen_range(3, INIT_SEGS_SQRT + 1) as usize;
         let mut rd_segm : Vec<usize> = vec![num_segs*num_segs; img.length()]; 
         let width = img.width() / num_segs;
         let height = img.height() / num_segs;
@@ -95,6 +98,33 @@ impl Genome {
         let num_segs = num_segs*num_segs + 1;
         let adj_list = Self::make_adj_list(&rd_segm, img);
         return Genome::new(Self::get_fitness(img, &mut rd_segm, num_segs as i32), rd_segm, adj_list)
+    }
+
+    fn random2(img : &Img) -> Genome {
+        let mut untreated : HashSet<usize> = (0..img.length()).collect();
+        let mut rd_segm = vec![0; img.length()];
+        let mut rng = thread_rng();
+        let mut current_segment = 1;
+        while !untreated.is_empty() {
+            let next = *untreated.iter().next().unwrap();
+            let seg_size = rng.gen_range(MIN_RG_SEG_SIZE, MAX_RG_SEG_SIZE);
+            Self::make_rd_seg(next, current_segment, &mut rd_segm, seg_size, img, &mut untreated);
+            current_segment = current_segment + 1;
+        }
+        println!("did one");
+        let adj_list = Self::make_adj_list(&rd_segm, img);
+        return Genome::new(Self::get_fitness(img, &mut rd_segm, current_segment as i32), rd_segm, adj_list)
+    }
+
+    fn make_rd_seg(current : usize, new_seg : usize, segmentation : &mut Vec<usize>, spread_size : usize, img : &Img, untreated : &mut HashSet<usize>) {
+        if spread_size == 0 || segmentation[current] == new_seg { return }
+        untreated.remove(&current);
+        segmentation[current] = new_seg;
+        for d in 1..=4 {
+            if let Some(n) = img.neighbor(current, d) {
+                Self::make_rd_seg(n, new_seg, segmentation, spread_size - 1, img, untreated);
+            }
+        }
     }
 
     // Each pixel can mutate. If it does, it goes to a random neighbor segment (need to work on a copy)
