@@ -1,13 +1,13 @@
 const POP_SIZE : usize = 50;
 const TOURNAMENT_SIZE : usize = 4;
-const GENERATIONS : usize = 100;
+const GENERATIONS : usize = 10;
 
 const MUT_PROB : f64 = 0.1;
 const CROSS_PROB : f64 = 1.0;
 
-const OD_WEIGHT : f64 = 0.00195;
-const CO_WEIGHT : f64 = 0.998;
-const EV_WEIGHT : f64 = 0.00005;
+const OD_WEIGHT : f64 = 1.0;
+const CO_WEIGHT : f64 = 650.0;
+const EV_WEIGHT : f64 = 0.8;
 
 use crate::image_proc::Img;
 use crate::image_proc::Pix;
@@ -17,6 +17,9 @@ use std::cmp::Ordering;
 use rand::prelude::*;
 use std::f64::MAX;
 
+use rayon::prelude::*;
+use rayon::iter::once;
+
 // Directions for representation : 0 = None, 1 = Up, 2 = Right, 3 = Down, 4 = Left
 pub fn train(input_image : &Img) -> Vec<usize> {
     let mut pop : Vec<Genome> = Vec::new();
@@ -25,21 +28,16 @@ pub fn train(input_image : &Img) -> Vec<usize> {
     }
     for i in 0..GENERATIONS {
         println!("Gen {}", i+1);
-        let mut new_indiv : HashSet<Genome> = HashSet::new(); 
-        while new_indiv.len() < POP_SIZE {
+        let new_pop: HashSet<Genome> = (0..POP_SIZE/2).into_par_iter().flat_map(|_| {
             let p1 = tournament_select(&pop);
             let p2 = tournament_select(&pop);
-            let c1 = ((&pop[p1]).crossover_order1(input_image, &pop[p2])).mutate(input_image);
-            let c2 = ((&pop[p2]).crossover_order1(input_image, &pop[p1])).mutate(input_image);
-            new_indiv.insert(c1);
-            new_indiv.insert(c2);
-        }
-        pop = Vec::new(); // Destroying all previous parents
-        for new_p in new_indiv {
-            pop.push(new_p);
-        }
+            let c1 = (&pop[p1]).cross_mut(input_image, &pop[p2]);
+            let c2 = (&pop[p2]).cross_mut(input_image, &pop[p1]);
+            once(c1).chain(once(c2))
+        }).collect();
+        pop.extend(new_pop.into_iter());
         pop.sort_by(|a, b| match a.fitness.partial_cmp(&b.fitness) {None => Ordering::Equal, Some(eq) => eq});
-        // pop.drain(0..POP_SIZE);
+        pop = pop.drain(pop.len()-POP_SIZE..).collect();
         println!("Best fitness : {}", pop[pop.len() - 1].fitness);
     }
     let best = pop.pop().unwrap();
@@ -87,7 +85,30 @@ impl Genome {
         return Genome::new(Self::get_fitness(img, &rd_edges), rd_edges)
     }
 
-    fn mutate(mut self, img : &Img) -> Genome {
+    fn cross_mut(&self, img : &Img, other : &Genome) -> Genome {
+        let mut rng = thread_rng();
+        let tmp : f64 = rng.gen();
+        let mut new_vec;
+        // Crossover
+        if tmp < CROSS_PROB {
+            let rd_num : Vec<f64> = (0..self.edges.len()).map(|_| rng.gen()).collect();
+            new_vec = rd_num.into_iter().enumerate().map(|(idx, f)| if f < 0.5 {self.edges[idx]} else {other.edges[idx]}).collect();
+        }
+        else {
+            new_vec = self.edges.clone();
+        }
+        // Mutate
+        let tmp : f64 = rng.gen();
+        if tmp < MUT_PROB {
+            let idx : usize = rng.gen_range(0, self.edges.len());
+            let new_val : i32 = rng.gen_range(0, 5);
+            new_vec[idx] = new_val;
+        }
+        let fitness = Self::get_fitness(img, &new_vec);
+        return Genome::new(fitness, new_vec)
+    }
+
+    fn _mutate(mut self, img : &Img) -> Genome {
         let mut rng = thread_rng();
         let tmp : f64 = rng.gen();
         if tmp < MUT_PROB {
@@ -98,7 +119,7 @@ impl Genome {
         return Self::new(Self::get_fitness(img, &self.edges), self.edges)
     }
 
-    fn crossover(&self, img : &Img, other : &Genome) -> Genome {
+    fn _crossover(&self, img : &Img, other : &Genome) -> Genome {
         let mut rng = thread_rng();
         let tmp : f64 = rng.gen();
         if tmp < CROSS_PROB {
@@ -110,7 +131,7 @@ impl Genome {
         return (*self).clone()
     }
 
-    fn crossover_order1(&self, img : &Img, other : &Genome) -> Genome {
+    fn _crossover_order1(&self, img : &Img, other : &Genome) -> Genome {
         let mut rng = thread_rng();
         let tmp : f64 = rng.gen();
         if tmp < CROSS_PROB {
@@ -129,8 +150,7 @@ impl Genome {
     fn get_fitness(img : &Img, edges : &Vec<i32>) -> i32 {
         let (seg_nums, centroids) = Self::find_segments(img, edges);
         let (edge_val, connectivity, overall_dev) = Self::get_measures(img, &seg_nums, &centroids);
-        println!("{} segments", centroids.len());
-        let fit = edge_val as f64 * EV_WEIGHT - connectivity as f64 * CO_WEIGHT - overall_dev as f64 * OD_WEIGHT;
+        let fit = edge_val * EV_WEIGHT - connectivity * CO_WEIGHT - overall_dev * OD_WEIGHT;
         return fit as i32
     }
 
