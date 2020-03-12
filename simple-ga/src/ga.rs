@@ -1,13 +1,13 @@
 const POP_SIZE : usize = 50;
 const TOURNAMENT_SIZE : usize = 4;
-const GENERATIONS : usize = 10;
+const GENERATIONS : usize = 100;
 
 const MUT_PROB : f64 = 0.1;
 const CROSS_PROB : f64 = 1.0;
 
 const OD_WEIGHT : f64 = 1.0;
-const CO_WEIGHT : f64 = 650.0;
-const EV_WEIGHT : f64 = 0.8;
+const CO_WEIGHT : f64 = 600.0;
+const EV_WEIGHT : f64 = 1.0;
 
 use crate::image_proc::Img;
 use crate::image_proc::Pix;
